@@ -40,6 +40,7 @@ Each survey gets a unique 6-character code when it is created. The code is shown
 - Screening questions are single- or multiple-choice with a correct answer stored in `private.screening_keys`, not on a table the browser can select. A wrong screening answer is saved as invalid and awards nothing.
 - Short answers cannot be screening questions.
 - Creators can add data-validation rules on a question (required, length, format, numeric range, or how many multiple-choice options can be selected). A failed rule blocks submission: nothing is saved, no response slot is used, and no credits are awarded. Surveys with no rules keep the original checks. Submitting before the minimum time is still saved as invalid.
+- Every response also gets one automatic quality-check question, chosen and placed at random when the respondent starts. It is not one of the creator's questions, so it does not change the credit cost or the time limit. A wrong or skipped quality check is saved as failed screening and earns nothing. The correct answer is not sent to the browser.
 
 ## Stack
 
@@ -79,9 +80,10 @@ The SQL is in [`supabase/migrations`](supabase/migrations). On the empty Formfue
 2. Paste `supabase/migrations/20261113153000_init_formfuel.sql` and run it.
 3. Paste `supabase/migrations/20261114101500_search_codes_credit_allocation.sql` and run it.
 4. Paste `supabase/migrations/20261114170000_question_validation.sql` and run it.
-5. In **Project Settings → Data API**, keep exposed schemas to `public` (and `graphql_public` if you use it). Do not expose `private`.
+5. Paste `supabase/migrations/20261114183000_attention_checks.sql` and run it.
+6. In **Project Settings → Data API**, keep exposed schemas to `public` (and `graphql_public` if you use it). Do not expose `private`.
 
-On a database that already ran the init migration, run the second file, then the question-validation file. The second file grants 10 credits to profiles whose balance is 0, assigns a search code to every survey, keeps existing open caps by recording the credits that formula needs, and clamps old 120-second minimums down to `question_count × 20` when that is lower. The validation file adds creator checks without changing surveys that have no rules.
+On a database that already ran the init migration, run the second file, then the question-validation file, then the attention-check file. The second file grants 10 credits to profiles whose balance is 0, assigns a search code to every survey, keeps existing open caps by recording the credits that formula needs, and clamps old 120-second minimums down to `question_count × 20` when that is lower. The validation file adds creator checks without changing surveys that have no rules.
 
 Or, with the [Supabase CLI](https://supabase.com/docs/guides/cli) linked to the project:
 

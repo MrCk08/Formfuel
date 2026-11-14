@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { ATTENTION_POOL, attentionCorrectIndex, withAttentionCheck } from "@/lib/attention"
 import { checkAnswer, compileQuestionValidation, isHttpUrl, regexSafetyError } from "@/lib/validation"
 import type { QuestionValidation } from "@/lib/types"
 
@@ -115,5 +116,34 @@ const saved = compileQuestionValidation("short", 0, false, {
 })
 assert.equal(saved.ok, true)
 if (saved.ok) assert.equal(saved.validation?.formatType, "email")
+
+assert.equal(ATTENTION_POOL.length, 5)
+assert.equal(ATTENTION_POOL[0]?.correctOption, "Verified")
+for (const item of ATTENTION_POOL) {
+  assert.equal(item.options.length, 4)
+  assert.equal(item.options.filter((option) => option === item.correctOption).length, 1)
+  assert.ok(attentionCorrectIndex(item) >= 0)
+}
+const merged = withAttentionCheck(
+  [
+    {
+      id: "q1",
+      position: 1,
+      kind: "short",
+      prompt: "Email",
+      options: [],
+      ratingMin: null,
+      ratingMax: null,
+      ratingMinLabel: null,
+      ratingMaxLabel: null,
+    },
+  ],
+  { id: "attention", position: 0, prompt: ATTENTION_POOL[0].prompt, options: [...ATTENTION_POOL[0].options] },
+)
+assert.equal(merged.length, 2)
+assert.equal(merged[0]?.attentionCheck, true)
+assert.equal(merged[1]?.id, "q1")
+assert.equal(merged[0]?.options.includes("Verified"), true)
+assert.equal("correctOption" in (merged[0] ?? {}), false)
 
 console.log("validation checks passed")

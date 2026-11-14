@@ -357,6 +357,8 @@ export const previewDashboard: DashboardModel = {
   submitted: 8,
   valid: 6,
   invalid: 2,
+  attentionPassed: 6,
+  attentionFailed: 2,
   completionRate: 89,
   isPromoted: false,
   promotedUntil: null,

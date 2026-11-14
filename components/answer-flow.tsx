@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useState, useTransition } from "react"
+import { withAttentionCheck } from "@/lib/attention"
 import { startResponseAction, submitResponseAction, type ResponseState } from "@/lib/actions"
 import { emptyDraft, toSubmission, type AnswerDraft } from "@/lib/answers"
 import { answerIssue } from "@/lib/validation"
@@ -31,7 +32,9 @@ export function AnswerFlow({
   initialDrafts?: Record<string, AnswerDraft>
 }) {
   const [phase, setPhase] = useState<ResponseState | null>(existing)
-  const [ready, setReady] = useState(Boolean(existing))
+  const [ready, setReady] = useState(existing?.state === "submitted")
+  const [creatorQuestions] = useState(questions)
+  const [shown, setShown] = useState(questions)
   const [error, setError] = useState<string | null>(null)
   const [index, setIndex] = useState(Math.min(startAt, Math.max(questions.length - 1, 0)))
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>(initialDrafts)
@@ -40,8 +43,9 @@ export function AnswerFlow({
   const [pending, startTransition] = useTransition()
 
   useEffect(() => {
-    if (existing) return
+    if (existing?.state === "submitted") return
     let ignore = false
+    const source = creatorQuestions
     startTransition(async () => {
       const result = await startResponseAction(surveyId)
       if (ignore) return
@@ -50,13 +54,21 @@ export function AnswerFlow({
         setReady(true)
         return
       }
+      const check = result.data?.attentionCheck
+      if (check) {
+        const merged = withAttentionCheck(source, check)
+        setShown(merged)
+        const anchor = source[startAt]?.id
+        const anchorIndex = anchor ? merged.findIndex((item) => item.id === anchor) : -1
+        if (anchorIndex >= 0) setIndex(anchorIndex)
+      }
       setPhase(result.data ?? null)
       setReady(true)
     })
     return () => {
       ignore = true
     }
-  }, [existing, surveyId])
+  }, [creatorQuestions, existing?.state, startAt, startTransition, surveyId])
 
   useEffect(() => {
     if (!phase || phase.state !== "in_progress") return
@@ -90,7 +102,7 @@ export function AnswerFlow({
     )
   }
 
-  const question = questions[index]
+  const question = shown[index]
   if (!question || !phase) {
     return <ResultCard title={title} body={error || "This survey has no questions."} href="/browse" hrefLabel="Back to browse" />
   }
@@ -101,7 +113,7 @@ export function AnswerFlow({
   const elapsed =
     now === null || !phase.startedAt ? 0 : Math.max(0, Math.floor((now - new Date(phase.startedAt).getTime()) / 1000))
   const remaining = Math.max(0, minCompletionSeconds - elapsed)
-  const progress = ((index + 1) / questions.length) * 100
+  const progress = ((index + 1) / shown.length) * 100
 
   function reveal(questionId: string) {
     setTouched((current) => ({ ...current, [questionId]: true }))
@@ -113,9 +125,9 @@ export function AnswerFlow({
   }
 
   function submit() {
-    const missing = questions.findIndex((item) => answerIssue(item, drafts[item.id] ?? emptyDraft()))
+    const missing = shown.findIndex((item) => answerIssue(item, drafts[item.id] ?? emptyDraft()))
     if (missing >= 0) {
-      const item = questions[missing]
+      const item = shown[missing]
       if (item) reveal(item.id)
       setIndex(missing)
       setError(item?.validation ? null : "Please answer every question.")
@@ -123,7 +135,7 @@ export function AnswerFlow({
     }
     setError(null)
     startTransition(async () => {
-      const result = await submitResponseAction(surveyId, toSubmission(questions, drafts))
+      const result = await submitResponseAction(surveyId, toSubmission(shown, drafts))
       if (!result.ok) {
         setError(result.message)
         return
@@ -135,12 +147,15 @@ export function AnswerFlow({
   return (
     <article className="mx-auto w-full max-w-2xl rounded-[28px] border border-line bg-white px-5 py-7 shadow-sm sm:px-8">
       <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+      <p className="mt-3 inline-flex rounded-full border border-amber/30 bg-amber-soft px-3 py-1 text-xs font-medium text-amber-deep">
+        Includes a short quality check
+      </p>
       <div className="mt-4 flex items-center gap-4">
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#efe8dc]" role="progressbar" aria-valuenow={index + 1} aria-valuemin={1} aria-valuemax={questions.length}>
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#efe8dc]" role="progressbar" aria-valuenow={index + 1} aria-valuemin={1} aria-valuemax={shown.length}>
           <div className="h-full rounded-full bg-amber" style={{ width: `${progress}%` }} />
         </div>
         <p className="shrink-0 text-sm text-muted">
-          Question {index + 1} of {questions.length}
+          Question {index + 1} of {shown.length}
         </p>
       </div>
       <div
@@ -159,7 +174,12 @@ export function AnswerFlow({
             : `You have waited at least ${formatMinTime(minCompletionSeconds)}. A valid response earns ${reward} ${creditWord(reward)}.`}
         </p>
       </div>
-      <h2 className="mt-6 text-lg font-semibold">{question.prompt}</h2>
+      {question.attentionCheck ? (
+        <p className="mt-6 inline-flex rounded-full border border-amber/30 bg-amber-soft px-3 py-1 text-xs font-medium text-amber-deep">
+          Quality check
+        </p>
+      ) : null}
+      <h2 className={`${question.attentionCheck ? "mt-3" : "mt-6"} text-lg font-semibold`}>{question.prompt}</h2>
       <div className="mt-4" onBlur={() => reveal(question.id)}>
         <QuestionField question={question} draft={draft} invalid={showIssue} onChange={setDraft} />
       </div>
@@ -181,7 +201,7 @@ export function AnswerFlow({
         <button type="button" className={btnSecondary} onClick={() => setIndex((value) => Math.max(0, value - 1))} disabled={index === 0}>
           Back
         </button>
-        {index < questions.length - 1 ? (
+        {index < shown.length - 1 ? (
           <button
             type="button"
             className={btnPrimary}

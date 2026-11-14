@@ -1,3 +1,4 @@
+import { ATTENTION_QUESTION_ID, type AttentionCheck } from "@/lib/attention"
 import { creditUnit } from "@/lib/config"
 import { getPreviewSurvey, type PreviewQuestion } from "@/lib/preview"
 import type { InvalidReason } from "@/lib/types"
@@ -10,7 +11,12 @@ type Submission = {
   rating?: number | null
 }
 
-export function scorePreview(surveyId: string, answers: unknown, elapsedSeconds: number) {
+export function scorePreview(
+  surveyId: string,
+  answers: unknown,
+  elapsedSeconds: number,
+  attention?: (AttentionCheck & { correctIndex: number }) | null,
+) {
   const survey = getPreviewSurvey(surveyId)
   if (!survey) return { ok: false as const, message: "Survey not found" }
   if (!Array.isArray(answers)) return { ok: false as const, message: "Answers are missing" }
@@ -34,6 +40,12 @@ export function scorePreview(surveyId: string, answers: unknown, elapsedSeconds:
       return { ok: false as const, message: question.validation ? problem : "Please complete every question" }
     }
     if (problem === "screen") failed = true
+  }
+
+  if (attention) {
+    const chosen = byId.get(ATTENTION_QUESTION_ID)
+    const indexes = chosen?.optionIndexes ?? []
+    if (indexes.length !== 1 || indexes[0] !== attention.correctIndex) failed = true
   }
 
   const tooFast = elapsedSeconds < survey.minCompletionSeconds

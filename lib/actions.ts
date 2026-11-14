@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
+import { pickAttentionCheck, type AttentionCheck } from "@/lib/attention"
 import { requireUser } from "@/lib/auth"
 import { cleanError, type ActionResult } from "@/lib/errors"
 import { scorePreview } from "@/lib/preview-score"
@@ -18,6 +19,7 @@ export type ResponseState = {
   invalidReason: InvalidReason | null
   creditsAwarded: number
   elapsedSeconds?: number
+  attentionCheck?: AttentionCheck | null
 }
 
 function refreshSurveyPaths(id?: string) {
@@ -121,8 +123,49 @@ export async function toggleBookmarkAction(surveyId: string, bookmarked: boolean
   return { ok: true }
 }
 
+type PreviewSession = {
+  startedAt: string
+  attention: AttentionCheck & { correctIndex: number }
+}
+
 function previewStartCookie(id: string) {
   return `ff_preview_start_${id}`
+}
+
+function readPreviewSession(raw: string | undefined, questionCount: number): PreviewSession | null {
+  if (!raw) return null
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw) as PreviewSession
+      if (typeof parsed.startedAt === "string" && parsed.attention?.prompt && Array.isArray(parsed.attention.options)) {
+        return parsed
+      }
+    } catch {
+      return null
+    }
+  }
+  return {
+    startedAt: raw,
+    attention: pickAttentionCheck(questionCount),
+  }
+}
+
+function publicAttention(check: AttentionCheck): AttentionCheck {
+  return {
+    id: "attention",
+    position: check.position,
+    prompt: check.prompt,
+    options: check.options,
+  }
+}
+
+function readServerAttention(value: unknown): AttentionCheck | null {
+  if (!value || typeof value !== "object") return null
+  const row = value as Record<string, unknown>
+  if (typeof row.prompt !== "string" || !Array.isArray(row.options)) return null
+  const options = row.options.filter((option): option is string => typeof option === "string")
+  if (options.length !== 4 || typeof row.position !== "number") return null
+  return { id: "attention", position: row.position, prompt: row.prompt, options }
 }
 
 function previewDoneCookie(id: string) {
@@ -132,7 +175,8 @@ function previewDoneCookie(id: string) {
 export async function startResponseAction(surveyId: string): Promise<ActionResult<ResponseState>> {
   const user = await requireUser()
   if (user.preview) {
-    if (!getPreviewSurvey(surveyId)) return { ok: false, message: "Survey not found" }
+    const survey = getPreviewSurvey(surveyId)
+    if (!survey) return { ok: false, message: "Survey not found" }
     const jar = await cookies()
     const done = jar.get(previewDoneCookie(surveyId))?.value
     if (done) {
@@ -142,10 +186,14 @@ export async function startResponseAction(surveyId: string): Promise<ActionResul
         return { ok: false, message: "Could not read the saved preview response" }
       }
     }
-    let startedAt = jar.get(previewStartCookie(surveyId))?.value
-    if (!startedAt) {
-      startedAt = new Date().toISOString()
-      jar.set(previewStartCookie(surveyId), startedAt, {
+    const stored = jar.get(previewStartCookie(surveyId))?.value
+    const existing = readPreviewSession(stored, survey.questions.length)
+    const session: PreviewSession = existing ?? {
+      startedAt: new Date().toISOString(),
+      attention: pickAttentionCheck(survey.questions.length),
+    }
+    if (!stored?.startsWith("{")) {
+      jar.set(previewStartCookie(surveyId), JSON.stringify(session), {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
@@ -156,10 +204,11 @@ export async function startResponseAction(surveyId: string): Promise<ActionResul
       ok: true,
       data: {
         state: "in_progress",
-        startedAt,
+        startedAt: session.startedAt,
         status: "in_progress",
         invalidReason: null,
         creditsAwarded: 0,
+        attentionCheck: publicAttention(session.attention),
       },
     }
   }
@@ -167,8 +216,8 @@ export async function startResponseAction(surveyId: string): Promise<ActionResul
   const supabase = await createClient()
   const { data, error } = await supabase.rpc("start_response", { p_survey_id: surveyId })
   if (error) return { ok: false, message: cleanError(error.message) }
-  const row = data as ResponseState
-  return { ok: true, data: row }
+  const row = data as ResponseState & { attentionCheck?: unknown }
+  return { ok: true, data: { ...row, attentionCheck: readServerAttention(row.attentionCheck) } }
 }
 
 export async function submitResponseAction(surveyId: string, answers: unknown): Promise<ActionResult<ResponseState>> {
@@ -183,14 +232,15 @@ export async function submitResponseAction(surveyId: string, answers: unknown): 
         return { ok: false, message: "You already responded to this survey" }
       }
     }
-    const startedAt = jar.get(previewStartCookie(surveyId))?.value
-    if (!startedAt) return { ok: false, message: "Start the survey before submitting" }
-    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
-    const scored = scorePreview(surveyId, answers, elapsedSeconds)
+    const survey = getPreviewSurvey(surveyId)
+    const session = readPreviewSession(jar.get(previewStartCookie(surveyId))?.value, survey?.questions.length ?? 0)
+    if (!session) return { ok: false, message: "Start the survey before submitting" }
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000))
+    const scored = scorePreview(surveyId, answers, elapsedSeconds, session.attention)
     if (!scored.ok) return scored
     const state: ResponseState = {
       state: "submitted",
-      startedAt,
+      startedAt: session.startedAt,
       status: scored.data.status,
       invalidReason: scored.data.invalidReason,
       creditsAwarded: scored.data.creditsAwarded,

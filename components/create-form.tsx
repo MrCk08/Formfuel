@@ -286,6 +286,10 @@ export function CreateForm({
             <h2 className="text-base font-semibold">Questions</h2>
             <p className="text-xs text-muted">Drag to reorder · Click to edit</p>
           </div>
+          <p className="mb-4 text-xs leading-5 text-muted">
+            A random quality check is added automatically when someone answers. It is not one of your questions and does not
+            change the credit cost or the time limit.
+          </p>
           <ol className="space-y-3">
             {questions.map((question, index) => (
               <li

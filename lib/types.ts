@@ -81,6 +81,8 @@ export type PublicQuestion = {
   ratingMinLabel: string | null
   ratingMaxLabel: string | null
   validation?: QuestionValidation
+  /** True only for the automatic quality check injected for this respondent. */
+  attentionCheck?: boolean
 }
 
 export type SurveyCardData = {
@@ -167,6 +169,8 @@ export type DashboardModel = {
   submitted: number
   valid: number
   invalid: number
+  attentionPassed: number
+  attentionFailed: number
   completionRate: number
   isPromoted: boolean
   promotedUntil: string | null

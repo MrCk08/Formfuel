@@ -160,6 +160,11 @@ export function DashboardView({
         <Stat icon={<CheckIcon />} value={String(model.valid)} label="valid" />
         <Stat icon={<CrossIcon />} value={String(model.invalid)} label="invalid (too fast or failed screening)" />
       </div>
+      {model.attentionPassed + model.attentionFailed > 0 ? (
+        <p className="text-sm text-muted">
+          Quality check: {model.attentionPassed} passed · {model.attentionFailed} failed. This is separate from your questions.
+        </p>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <section className="rounded-3xl border border-line bg-white p-5">

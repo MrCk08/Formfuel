@@ -346,7 +346,7 @@ export async function getDashboard(user: AppUser, id: string): Promise<LoadResul
 
   const { data: responses, error: responseError } = await supabase
     .from("responses")
-    .select("id, status, invalid_reason, submitted_at, started_at")
+    .select("id, status, invalid_reason, submitted_at, started_at, attention_passed")
     .eq("survey_id", id)
   if (responseError || !responses) return { ok: false, message: cleanError(responseError?.message || "Could not load responses") }
 

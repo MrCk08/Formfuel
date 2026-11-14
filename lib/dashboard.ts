@@ -7,6 +7,7 @@ type ResponseRow = {
   status: "in_progress" | "valid" | "invalid"
   invalid_reason: RecentAnswer["invalidReason"]
   submitted_at: string | null
+  attention_passed?: boolean | null
 }
 
 type AnswerRow = {
@@ -32,6 +33,8 @@ export function buildDashboard(input: {
   const submitted = input.responses.filter((response) => response.status !== "in_progress")
   const valid = submitted.filter((response) => response.status === "valid").length
   const invalid = submitted.filter((response) => response.status === "invalid").length
+  const attentionPassed = submitted.filter((response) => response.attention_passed === true).length
+  const attentionFailed = submitted.filter((response) => response.attention_passed === false).length
   const started = input.responses.length
   const completionRate = started === 0 ? 0 : Math.round((submitted.length / started) * 100)
   const answersByResponse = new Map<string, AnswerRow[]>()
@@ -118,6 +121,8 @@ export function buildDashboard(input: {
     submitted: submitted.length,
     valid,
     invalid,
+    attentionPassed,
+    attentionFailed,
     completionRate,
     isPromoted: input.promotedUntil ? new Date(input.promotedUntil).getTime() > Date.now() : false,
     promotedUntil: input.promotedUntil,
