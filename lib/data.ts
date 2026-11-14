@@ -22,6 +22,7 @@ import type {
   SurveyCardData,
   SurveyStatus,
 } from "@/lib/types"
+import { parseStoredValidation } from "@/lib/validation"
 
 export type LoadResult<T> = { ok: true; data: T } | { ok: false; message: string }
 
@@ -261,7 +262,7 @@ export async function getAnswerPage(user: AppUser, id: string): Promise<LoadResu
 
   const { data: questions, error: questionError } = await supabase
     .from("questions")
-    .select("id, position, kind, prompt, options, rating_min, rating_max, rating_min_label, rating_max_label")
+    .select("id, position, kind, prompt, options, rating_min, rating_max, rating_min_label, rating_max_label, validation")
     .eq("survey_id", id)
     .order("position")
   if (questionError) return { ok: false, message: cleanError(questionError.message) }
@@ -307,6 +308,7 @@ export async function getAnswerPage(user: AppUser, id: string): Promise<LoadResu
         ratingMax: question.rating_max,
         ratingMinLabel: question.rating_min_label,
         ratingMaxLabel: question.rating_max_label,
+        validation: parseStoredValidation(question.validation),
       })),
       existing: response
         ? {
@@ -445,6 +447,7 @@ function parseEditorSurvey(data: unknown): EditorSurvey | null {
         correctOptionIndexes: Array.isArray(item.correctOptionIndexes)
           ? item.correctOptionIndexes.filter((value): value is number => typeof value === "number")
           : [],
+        validation: parseStoredValidation(item.validation),
       }
     }),
   }

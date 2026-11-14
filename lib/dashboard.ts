@@ -54,7 +54,7 @@ export function buildDashboard(input: {
       const answer = (answersByResponse.get(response.id) ?? []).find((item) => item.question_id === question.id)
       const value = parseAnswerValue(answer?.value)
       if (!value) continue
-      if ("rating" in value) {
+      if ("rating" in value && value.rating != null) {
         const label = String(value.rating)
         counts.set(label, (counts.get(label) ?? 0) + 1)
       }

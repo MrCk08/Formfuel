@@ -35,7 +35,7 @@ export function toSubmission(questions: PublicQuestion[], drafts: Record<string,
 export function displayAnswer(question: Pick<PublicQuestion, "options">, value: AnswerValue | null) {
   if (!value) return "—"
   if ("text" in value) return value.text || "—"
-  if ("rating" in value) return String(value.rating)
+  if ("rating" in value) return value.rating == null ? "—" : String(value.rating)
   if ("optionIndexes" in value) {
     if (value.optionIndexes.length === 0) return "—"
     return value.optionIndexes.map((index) => question.options[index] ?? "—").join(", ")
@@ -47,7 +47,10 @@ export function parseAnswerValue(value: unknown): AnswerValue | null {
   if (!value || typeof value !== "object") return null
   const record = value as Record<string, unknown>
   if (typeof record.text === "string") return { text: record.text }
-  if (typeof record.rating === "number") return { rating: record.rating }
+  if ("rating" in record) {
+    if (typeof record.rating === "number") return { rating: record.rating }
+    if (record.rating == null) return { rating: null }
+  }
   if (Array.isArray(record.optionIndexes)) {
     const optionIndexes = record.optionIndexes.filter((item): item is number => typeof item === "number")
     return { optionIndexes }

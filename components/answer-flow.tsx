@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { useEffect, useState, useTransition } from "react"
 import { startResponseAction, submitResponseAction, type ResponseState } from "@/lib/actions"
-import { emptyDraft, isAnswered, toSubmission, type AnswerDraft } from "@/lib/answers"
+import { emptyDraft, toSubmission, type AnswerDraft } from "@/lib/answers"
+import { answerIssue } from "@/lib/validation"
 import { creditWord, formatCountdown, formatMinTime } from "@/lib/config"
 import { invalidReasonLabel } from "@/lib/labels"
 import type { PublicQuestion } from "@/lib/types"
@@ -34,6 +35,7 @@ export function AnswerFlow({
   const [error, setError] = useState<string | null>(null)
   const [index, setIndex] = useState(Math.min(startAt, Math.max(questions.length - 1, 0)))
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>(initialDrafts)
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [now, setNow] = useState<number | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -94,20 +96,29 @@ export function AnswerFlow({
   }
 
   const draft = drafts[question.id] ?? emptyDraft()
+  const issue = answerIssue(question, draft)
+  const showIssue = Boolean(issue) && Boolean(question.validation) && Boolean(touched[question.id])
   const elapsed =
     now === null || !phase.startedAt ? 0 : Math.max(0, Math.floor((now - new Date(phase.startedAt).getTime()) / 1000))
   const remaining = Math.max(0, minCompletionSeconds - elapsed)
   const progress = ((index + 1) / questions.length) * 100
 
+  function reveal(questionId: string) {
+    setTouched((current) => ({ ...current, [questionId]: true }))
+  }
+
   function setDraft(next: AnswerDraft) {
+    reveal(question.id)
     setDrafts((current) => ({ ...current, [question.id]: next }))
   }
 
   function submit() {
-    const missing = questions.findIndex((item) => !isAnswered(item, drafts[item.id]))
+    const missing = questions.findIndex((item) => answerIssue(item, drafts[item.id] ?? emptyDraft()))
     if (missing >= 0) {
+      const item = questions[missing]
+      if (item) reveal(item.id)
       setIndex(missing)
-      setError("Please answer every question.")
+      setError(item?.validation ? null : "Please answer every question.")
       return
     }
     setError(null)
@@ -149,9 +160,18 @@ export function AnswerFlow({
         </p>
       </div>
       <h2 className="mt-6 text-lg font-semibold">{question.prompt}</h2>
-      <div className="mt-4">
-        <QuestionField question={question} draft={draft} onChange={setDraft} />
+      <div className="mt-4" onBlur={() => reveal(question.id)}>
+        <QuestionField question={question} draft={draft} invalid={showIssue} onChange={setDraft} />
       </div>
+      {showIssue && issue ? (
+        <p
+          id={`${question.id}-error`}
+          className="mt-3 inline-flex rounded-full border border-bad/30 bg-bad-soft px-3 py-1 text-xs font-medium text-bad"
+          role="alert"
+        >
+          {issue.message}
+        </p>
+      ) : null}
       {error ? (
         <p className="mt-4 text-sm text-bad" role="alert">
           {error}
@@ -165,19 +185,28 @@ export function AnswerFlow({
           <button
             type="button"
             className={btnPrimary}
-            disabled={!isAnswered(question, draft)}
-            onClick={() => setIndex((value) => value + 1)}
+            disabled={Boolean(issue)}
+            onClick={() => {
+              if (issue) {
+                reveal(question.id)
+                setError(question.validation ? null : "Please answer every question.")
+                return
+              }
+              setError(null)
+              setIndex((value) => value + 1)
+            }}
           >
             Next
           </button>
         ) : (
-          <button type="button" className={btnPrimary} disabled={pending || !isAnswered(question, draft)} onClick={submit}>
+          <button type="button" className={btnPrimary} disabled={pending || Boolean(issue)} onClick={submit}>
             {pending ? "Submitting…" : "Submit"}
           </button>
         )}
       </div>
       <p className="mt-6 text-center text-sm text-muted">
-        A valid response earns {reward} {creditWord(reward)}. Submit stays available if you finish early.
+        A valid response earns {reward} {creditWord(reward)}. Submit stays available if you finish early. A question
+        that fails its checks has to be fixed before it can be submitted.
       </p>
     </article>
   )
@@ -186,22 +215,37 @@ export function AnswerFlow({
 function QuestionField({
   question,
   draft,
+  invalid,
   onChange,
 }: {
   question: PublicQuestion
   draft: AnswerDraft
+  invalid: boolean
   onChange: (draft: AnswerDraft) => void
 }) {
   if (question.kind === "short") {
+    const minLength = question.validation?.minLength
+    const maxLength = question.validation?.maxLength
     return (
-      <textarea
-        value={draft.text}
-        onChange={(event) => onChange({ ...draft, text: event.target.value })}
-        rows={4}
-        maxLength={500}
-        placeholder="Write a short response"
-        className="w-full rounded-2xl border border-line px-4 py-3 text-sm outline-none ring-amber focus:ring-2"
-      />
+      <div>
+        <textarea
+          value={draft.text}
+          onChange={(event) => onChange({ ...draft, text: event.target.value })}
+          rows={4}
+          maxLength={500}
+          placeholder="Write a short response"
+          aria-invalid={invalid}
+          aria-describedby={invalid ? `${question.id}-error` : undefined}
+          className="w-full rounded-2xl border border-line px-4 py-3 text-sm outline-none ring-amber focus:ring-2"
+        />
+        {question.validation && (minLength != null || maxLength != null) ? (
+          <p className="mt-2 text-xs text-muted">
+            {draft.text.trim().length}
+            {maxLength != null ? ` / ${maxLength}` : ""} characters
+            {minLength != null ? ` · at least ${minLength}` : ""}
+          </p>
+        ) : null}
+      </div>
     )
   }
 

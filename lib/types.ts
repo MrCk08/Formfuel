@@ -1,5 +1,30 @@
 export type QuestionKind = "single" | "multiple" | "short" | "rating"
 
+export const formatTypes = [
+  "none",
+  "email",
+  "integer",
+  "decimal",
+  "alphanumeric",
+  "hk_phone",
+  "url",
+  "custom_regex",
+] as const
+
+export type FormatType = (typeof formatTypes)[number]
+
+/** Creator-defined checks. Omitted means the original required / 1–500 / at-least-one rules. */
+export type QuestionValidation = {
+  required?: boolean
+  minLength?: number
+  maxLength?: number
+  formatType?: FormatType
+  customRegex?: string
+  minValue?: number
+  maxValue?: number
+  errorMessage?: string
+}
+
 export type SurveyStatus = "draft" | "open" | "closed"
 
 export type ResponseStatus = "in_progress" | "valid" | "invalid"
@@ -19,6 +44,7 @@ export type QuestionInput = {
   ratingMaxLabel: string
   isScreening: boolean
   correctOptionIndexes: number[]
+  validation?: QuestionValidation
 }
 
 export type SurveyInput = {
@@ -54,6 +80,7 @@ export type PublicQuestion = {
   ratingMax: number | null
   ratingMinLabel: string | null
   ratingMaxLabel: string | null
+  validation?: QuestionValidation
 }
 
 export type SurveyCardData = {
@@ -92,7 +119,7 @@ export type OwnedSurvey = {
 export type AnswerValue =
   | { optionIndexes: number[] }
   | { text: string }
-  | { rating: number }
+  | { rating: number | null }
 
 export type LedgerEntry = {
   id: string

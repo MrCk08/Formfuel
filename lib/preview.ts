@@ -303,6 +303,7 @@ export function toPublicQuestions(questions: PreviewQuestion[]): PublicQuestion[
     ratingMax: question.ratingMax,
     ratingMinLabel: question.ratingMinLabel,
     ratingMaxLabel: question.ratingMaxLabel,
+    validation: question.validation,
   }))
 }
 
