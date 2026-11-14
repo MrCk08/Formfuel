@@ -27,6 +27,10 @@ export type SurveyInput = {
   description: string
   tags: string[]
   publish: boolean
+  /** Whole seconds. Server rejects values above questionCount * 20. */
+  minCompletionSeconds: number
+  /** Spent only when publish is true. Funds floor(credits / cost per response) slots. */
+  creditsToAllocate: number
   questions: QuestionInput[]
 }
 
@@ -37,7 +41,6 @@ export type AppUser = {
   avatarUrl: string | null
   initials: string
   creditBalance: number
-  freeCreatesRemaining: number
   preview: boolean
 }
 
@@ -58,6 +61,7 @@ export type SurveyCardData = {
   title: string
   description: string
   tags: string[]
+  searchCode: string
   responseCount: number
   responseCap: number
   estimatedMinutes: number
@@ -72,9 +76,13 @@ export type OwnedSurvey = {
   id: string
   title: string
   description: string
+  tags: string[]
+  searchCode: string
   status: SurveyStatus
   responseCount: number
   responseCap: number
+  creditsAllocated: number
+  minCompletionSeconds: number
   estimatedMinutes: number
   isPromoted: boolean
   publishedAt: string | null
@@ -90,7 +98,13 @@ export type LedgerEntry = {
   id: string
   amount: number
   balanceAfter: number
-  reason: "survey_completion" | "raise_cap" | "promote" | "create_survey"
+  reason:
+    | "survey_completion"
+    | "raise_cap"
+    | "promote"
+    | "create_survey"
+    | "signup_grant"
+    | "fund_survey"
   surveyTitle: string | null
   createdAt: string
 }
@@ -116,7 +130,12 @@ export type DashboardModel = {
   id: string
   title: string
   status: SurveyStatus
+  tags: string[]
+  searchCode: string
   responseCap: number
+  creditsAllocated: number
+  minCompletionSeconds: number
+  questionCount: number
   started: number
   submitted: number
   valid: number

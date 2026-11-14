@@ -64,19 +64,18 @@ function Landing({ error }: { error: string | null }) {
         <div className="rounded-[28px] border border-line bg-white p-6 shadow-sm">
           <p className="text-sm font-semibold text-muted">How credits move</p>
           <dl className="mt-4 space-y-3 text-sm">
-            <Rule label="Free response cap" value={`${productConfig.defaultResponseCap} responses`} />
-            <Rule label="Valid completion" value={`+${productConfig.rewardPerValidCompletion} credits`} />
-            <Rule label="Raise cap by 10" value={`${productConfig.raiseCapCost} credits`} />
+            <Rule label="Starting balance" value={`${productConfig.startingCredits} credits`} />
+            <Rule label="One credit" value={`${productConfig.questionsPerCredit} questions`} />
+            <Rule label="Valid completion" value="Earns one response slot" />
             <Rule label="Promote a survey" value={`${productConfig.promoteCost} credits for ${productConfig.promoteDays} days`} />
-            <Rule label="Free surveys" value={`${productConfig.freeCreateQuota}, then ${productConfig.extraSurveyCost} credits`} />
-            <Rule label="Minimum time" value={formatMinTime(productConfig.minCompletionSeconds)} />
+            <Rule label="Minimum time" value={`Up to 20s per question, default ${formatMinTime(productConfig.defaultMinCompletionSeconds)}`} />
           </dl>
         </div>
       </section>
       <section className="grid gap-4 pb-16 md:grid-cols-3">
         <Step n="1" title="Post a survey" body="Write the questions on Formfuel. Single choice, multiple choice, short answer, or a rating scale." />
         <Step n="2" title="Answer others" body="Any signed-in student can answer any open survey except their own. One response each." />
-        <Step n="3" title="Spend credits" body="Valid answers earn credits. Use them to raise a response cap or promote your survey." />
+        <Step n="3" title="Spend credits" body="Fund more responses by allocating credits, or promote your survey. Each survey has a search code and tags." />
       </section>
       <footer className="mt-auto border-t border-line py-6 text-sm text-muted">Built for BUHack 2.0</footer>
     </main>

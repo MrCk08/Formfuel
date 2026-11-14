@@ -1,4 +1,4 @@
-import { defaultRules } from "@/lib/config"
+import { creditUnit } from "@/lib/config"
 import { getPreviewSurvey, type PreviewQuestion } from "@/lib/preview"
 import type { InvalidReason } from "@/lib/types"
 
@@ -33,7 +33,7 @@ export function scorePreview(surveyId: string, answers: unknown, elapsedSeconds:
     if (problem === "screen") failed = true
   }
 
-  const tooFast = elapsedSeconds < defaultRules.minCompletionSeconds
+  const tooFast = elapsedSeconds < survey.minCompletionSeconds
   let status: "valid" | "invalid" = "valid"
   let invalidReason: InvalidReason | null = null
   if (tooFast && failed) {
@@ -52,7 +52,7 @@ export function scorePreview(surveyId: string, answers: unknown, elapsedSeconds:
     data: {
       status,
       invalidReason,
-      creditsAwarded: status === "valid" ? defaultRules.rewardPerValidCompletion : 0,
+      creditsAwarded: status === "valid" ? creditUnit(survey.questions.length) : 0,
       elapsedSeconds,
     },
   }

@@ -26,7 +26,7 @@ export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
   const email = typeof data.claims.email === "string" ? data.claims.email : null
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, avatar_url, credit_balance, free_creates_remaining")
+    .select("display_name, avatar_url, credit_balance")
     .eq("id", userId)
     .maybeSingle()
 
@@ -38,7 +38,6 @@ export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
     avatarUrl: profile?.avatar_url ?? null,
     initials: initialsFrom(displayName),
     creditBalance: profile?.credit_balance ?? 0,
-    freeCreatesRemaining: profile?.free_creates_remaining ?? 0,
     preview: false,
   }
 })

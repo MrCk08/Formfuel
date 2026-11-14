@@ -4,6 +4,8 @@ import { notFound } from "next/navigation"
 import { requireUser } from "@/lib/auth"
 import { getAnswerPage, getRules } from "@/lib/data"
 import { AnswerFlow } from "@/components/answer-flow"
+import { SurveyMeta } from "@/components/survey-meta"
+import { creditUnit } from "@/lib/config"
 import { Logo } from "@/components/icons"
 import { CreditsPill, DataError, PreviewBanner, UserMenu, btnPrimary } from "@/components/ui"
 import type { ResponseState } from "@/lib/actions"
@@ -55,22 +57,40 @@ async function AnswerContent({ params }: { params: Promise<{ id: string }> }) {
 
   if (survey.isOwner) {
     return (
-      <Notice
-        title="You can’t answer your own survey"
-        body="Owners can read results, download a CSV, promote the survey, or raise its response cap."
-        href={`/surveys/${survey.id}/dashboard`}
-        hrefLabel="Open dashboard"
-      />
+      <div className="space-y-4">
+        <SurveyMeta searchCode={survey.searchCode} tags={survey.tags} />
+        <Notice
+          title="You can’t answer your own survey"
+          body="Owners can read results, download a CSV, promote the survey, or add credits to fund more responses."
+          href={`/surveys/${survey.id}/dashboard`}
+          hrefLabel="Open dashboard"
+        />
+      </div>
     )
   }
 
   if (survey.status !== "open" && survey.existing?.status !== "in_progress" && survey.existing?.status !== "valid" && survey.existing?.status !== "invalid") {
-    return <Notice title="This survey is closed" body="It is not accepting responses." href="/browse" hrefLabel="Back to browse" />
+    return (
+      <div className="space-y-4">
+        <SurveyMeta searchCode={survey.searchCode} tags={survey.tags} />
+        <Notice title="This survey is closed" body="It is not accepting responses." href="/browse" hrefLabel="Back to browse" />
+      </div>
+    )
   }
 
   const submitted = survey.existing && survey.existing.status !== "in_progress"
   if (!submitted && survey.responseCount >= survey.responseCap && survey.existing?.status !== "in_progress") {
-    return <Notice title="This survey is full" body="The owner can raise the response cap to collect more answers." href="/browse" hrefLabel="Back to browse" />
+    return (
+      <div className="space-y-4">
+        <SurveyMeta searchCode={survey.searchCode} tags={survey.tags} />
+        <Notice
+          title="This survey is full"
+          body="The owner can add credits to fund more responses."
+          href="/browse"
+          hrefLabel="Back to browse"
+        />
+      </div>
+    )
   }
 
   const existing: ResponseState | null = survey.existing
@@ -84,19 +104,23 @@ async function AnswerContent({ params }: { params: Promise<{ id: string }> }) {
     : null
 
   return (
-    <AnswerFlow
-      surveyId={survey.id}
-      title={survey.title}
-      questions={survey.questions}
-      rules={rules}
-      existing={existing}
-      startAt={user.preview && survey.id === "preview-study" ? 2 : 0}
-      initialDrafts={
-        user.preview && survey.id === "preview-study"
-          ? { "study-q3": { ...emptyDraft(), optionIndexes: [1] } }
-          : undefined
-      }
-    />
+    <div className="space-y-4">
+      <SurveyMeta searchCode={survey.searchCode} tags={survey.tags} />
+      <AnswerFlow
+        surveyId={survey.id}
+        title={survey.title}
+        questions={survey.questions}
+        minCompletionSeconds={survey.minCompletionSeconds}
+        reward={creditUnit(survey.questions.length, rules.questionsPerCredit)}
+        existing={existing}
+        startAt={user.preview && survey.id === "preview-study" ? 2 : 0}
+        initialDrafts={
+          user.preview && survey.id === "preview-study"
+            ? { "study-q3": { ...emptyDraft(), optionIndexes: [1] } }
+            : undefined
+        }
+      />
+    </div>
   )
 }
 

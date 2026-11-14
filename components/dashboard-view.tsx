@@ -3,31 +3,52 @@
 import type { ReactNode } from "react"
 import Link from "next/link"
 import { useState, useTransition } from "react"
-import { closeSurveyAction, promoteSurveyAction, raiseCapAction } from "@/lib/actions"
-import type { ProductRules } from "@/lib/config"
+import { closeSurveyAction, fundSurveyAction, promoteSurveyAction } from "@/lib/actions"
+import {
+  creditUnit,
+  creditWord,
+  creditsNeededForNextSlot,
+  formatMinTime,
+  responseCapForCredits,
+  type ProductRules,
+} from "@/lib/config"
 import { invalidReasonLabel, statusLabel } from "@/lib/labels"
 import type { DashboardModel } from "@/lib/types"
+import { SearchCode, TagList } from "@/components/survey-meta"
 import { ArrowIcon, ChartIcon, CheckIcon, CrossIcon, DownloadIcon, MegaphoneIcon, PeopleIcon } from "@/components/icons"
 
-export function DashboardView({ model, rules }: { model: DashboardModel; rules: ProductRules }) {
+export function DashboardView({
+  model,
+  rules,
+  justPublished = false,
+}: {
+  model: DashboardModel
+  rules: ProductRules
+  justPublished?: boolean
+}) {
+  const unit = creditUnit(model.questionCount, rules.questionsPerCredit)
+  const needed = creditsNeededForNextSlot(model.creditsAllocated, model.questionCount, rules.questionsPerCredit)
+  const [addCredits, setAddCredits] = useState(needed)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<"promote" | "raise" | "close" | null>(null)
+  const [confirm, setConfirm] = useState<"promote" | "fund" | "close" | null>(null)
   const [pending, startTransition] = useTransition()
+  const nextCap = responseCapForCredits(model.creditsAllocated + addCredits, model.questionCount, rules.questionsPerCredit)
+  const addsSlot = nextCap > model.responseCap
   const [chartId, setChartId] = useState(model.distributions[0]?.questionId ?? "")
   const chart = model.distributions.find((item) => item.questionId === chartId) ?? model.distributions[0]
   const axisMax = chart ? Math.max(10, ...chart.rows.map((row) => row.percent)) : 100
   const niceMax = Math.min(100, Math.ceil(axisMax / 10) * 10)
 
-  function run(action: "promote" | "raise" | "close") {
+  function run(action: "promote" | "fund" | "close") {
     setError(null)
     startTransition(async () => {
       if (action === "promote") {
         const result = await promoteSurveyAction(model.id)
         if (!result.ok) setError(result.message)
         else setNotice("This survey is promoted.")
-      } else if (action === "raise") {
-        const result = await raiseCapAction(model.id)
+      } else if (action === "fund") {
+        const result = await fundSurveyAction(model.id, addCredits)
         if (!result.ok) setError(result.message)
         else setNotice(`Response cap is now ${result.data?.responseCap}.`)
       } else {
@@ -44,6 +65,10 @@ export function DashboardView({ model, rules }: { model: DashboardModel; rules: 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="max-w-3xl text-3xl font-semibold tracking-tight sm:text-4xl">{model.title}</h1>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <SearchCode code={model.searchCode} />
+            <TagList tags={model.tags} linked />
+          </div>
           <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-sm ring-1 ring-line">
             <span className={`h-2 w-2 rounded-full ${model.status === "open" ? "bg-amber" : "bg-muted"}`} />
             {statusLabel(model.status)}
@@ -62,24 +87,58 @@ export function DashboardView({ model, rules }: { model: DashboardModel; rules: 
           >
             <MegaphoneIcon /> Promote survey · {rules.promoteCost} credits
           </button>
-          <button
-            type="button"
-            onClick={() => setConfirm("raise")}
-            disabled={model.status === "closed" || pending}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-amber/30 bg-[#fbf6ee] text-sm font-semibold"
-          >
-            <ArrowIcon /> Raise cap +{rules.raiseCapStep} · {rules.raiseCapCost} credits
-          </button>
+          <div className="rounded-2xl border border-amber/30 bg-[#fbf6ee] p-3 text-sm">
+            <p className="font-semibold">Add response credits</p>
+            <p className="mt-1 text-xs leading-5 text-muted">
+              {model.creditsAllocated} {creditWord(model.creditsAllocated)} allocated · cap {model.responseCap}. Each response costs {unit}{" "}
+              {creditWord(unit)}. Minimum time is {formatMinTime(model.minCompletionSeconds)}.
+            </p>
+            <label className="mt-2 block text-xs text-muted">
+              Credits to add
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={addCredits}
+                onChange={(event) => setAddCredits(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
+                className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink"
+              />
+            </label>
+            <p className="mt-2 text-xs text-muted">
+              {addsSlot
+                ? `New cap: ${nextCap} (${nextCap - model.responseCap} more ${nextCap - model.responseCap === 1 ? "response" : "responses"}).`
+                : `Add at least ${needed} ${creditWord(needed)} to fund another response.`}
+            </p>
+            <button
+              type="button"
+              onClick={() => setConfirm("fund")}
+              disabled={model.status !== "open" || pending || !addsSlot}
+              className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber/30 bg-white text-sm font-semibold disabled:opacity-50"
+            >
+              <ArrowIcon /> Add {addCredits} {creditWord(addCredits)}
+            </button>
+          </div>
         </div>
       </div>
+
+      {justPublished ? (
+        <div className="rounded-2xl border border-amber/30 bg-amber-soft px-4 py-3 text-sm">
+          <p className="font-semibold">Survey published</p>
+          <p className="mt-1">
+            Students can find it by searching for code {model.searchCode}. You allocated {model.creditsAllocated}{" "}
+            {creditWord(model.creditsAllocated)}, which funds {model.responseCap}{" "}
+            {model.responseCap === 1 ? "response" : "responses"}.
+          </p>
+        </div>
+      ) : null}
 
       {confirm ? (
         <div className="rounded-2xl border border-line bg-white p-4 text-sm">
           <p>
             {confirm === "promote"
               ? `Spend ${rules.promoteCost} credits to feature this survey for ${rules.promoteDays} days?`
-              : confirm === "raise"
-                ? `Spend ${rules.raiseCapCost} credits to add ${rules.raiseCapStep} responses?`
+              : confirm === "fund"
+                ? `Spend ${addCredits} ${creditWord(addCredits)} to raise the cap from ${model.responseCap} to ${nextCap}?`
                 : "Close this survey? People will no longer be able to answer it."}
           </p>
           <div className="mt-3 flex gap-2">

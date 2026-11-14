@@ -1,8 +1,19 @@
 "use client"
 
 import { useRef, useState, useTransition } from "react"
-import { deleteDraftAction, raiseCapAction, saveSurveyAction } from "@/lib/actions"
-import { estimateMinutes, formatMinutes, type ProductRules } from "@/lib/config"
+import { deleteDraftAction, saveSurveyAction } from "@/lib/actions"
+import {
+  creditUnit,
+  creditWord,
+  defaultMinCompletionSeconds,
+  estimateMinutes,
+  formatMinutes,
+  formatMinTime,
+  maxMinCompletionSeconds,
+  responseCapForCredits,
+  type ProductRules,
+} from "@/lib/config"
+import { SearchCode } from "@/components/survey-meta"
 import { questionKindLabel } from "@/lib/labels"
 import { blankQuestion, type DraftQuestion, validateSurveyInput } from "@/lib/survey-form"
 import type { QuestionKind } from "@/lib/types"
@@ -12,32 +23,38 @@ const kinds: QuestionKind[] = ["single", "multiple", "short", "rating"]
 
 export function CreateForm({
   rules,
+  balance,
   initial,
 }: {
   rules: ProductRules
+  balance: number
   initial?: {
     id?: string
     title: string
     description: string
     tags: string[]
+    searchCode?: string
+    minCompletionSeconds?: number
     questions: DraftQuestion[]
-    responseCap: number
   }
 }) {
-  const keyRef = useRef(initial?.questions.length ?? 1)
+  const startingQuestions = initial?.questions?.length ? initial.questions : [blankQuestion("single", "q-1")]
+  const keyRef = useRef(startingQuestions.length)
   const [title, setTitle] = useState(initial?.title ?? "")
   const [description, setDescription] = useState(initial?.description ?? "")
   const [tags, setTags] = useState<string[]>(initial?.tags ?? [])
   const [tagDraft, setTagDraft] = useState("")
-  const [questions, setQuestions] = useState<DraftQuestion[]>(
-    initial?.questions?.length ? initial.questions : [blankQuestion("single", "q-1")],
-  )
+  const [questions, setQuestions] = useState<DraftQuestion[]>(startingQuestions)
   const [openKey, setOpenKey] = useState<string | null>(null)
-  const [cap, setCap] = useState(initial?.responseCap ?? rules.defaultResponseCap)
+  const [minTouched, setMinTouched] = useState(initial?.minCompletionSeconds != null)
+  const [minSeconds, setMinSeconds] = useState(
+    initial?.minCompletionSeconds ??
+      defaultMinCompletionSeconds(startingQuestions.length, rules.defaultMinCompletionSeconds, rules.minSecondsPerQuestion),
+  )
+  const [creditsToAllocate, setCreditsToAllocate] = useState(rules.startingCredits)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [confirmRaise, setConfirmRaise] = useState(false)
-  const [pending, setPending] = useState<"draft" | "publish" | "raise" | "delete" | null>(null)
+  const [pending, setPending] = useState<"draft" | "publish" | "delete" | null>(null)
   const [, startTransition] = useTransition()
   const [dragIndex, setDragIndex] = useState<number | null>(null)
 
@@ -81,17 +98,38 @@ export function CreateForm({
     setTagDraft("")
   }
 
+  const questionCount = questions.length
+  const maxMinSeconds = maxMinCompletionSeconds(questionCount, rules.minSecondsPerQuestion)
+  const autoMinSeconds = defaultMinCompletionSeconds(
+    questionCount,
+    rules.defaultMinCompletionSeconds,
+    rules.minSecondsPerQuestion,
+  )
+  const shownMinSeconds = minTouched ? Math.min(Math.max(0, minSeconds), maxMinSeconds) : autoMinSeconds
+  const unit = creditUnit(questionCount, rules.questionsPerCredit)
+  const fundedSlots = responseCapForCredits(creditsToAllocate, questionCount, rules.questionsPerCredit)
+  const leftover = Math.max(0, creditsToAllocate - fundedSlots * unit)
+
   function save(publish: boolean) {
     setError(null)
     setNotice(null)
-    const parsed = validateSurveyInput({
-      id: initial?.id,
-      title,
-      description,
-      tags,
-      publish,
-      questions,
-    })
+    if (publish && creditsToAllocate > balance) {
+      setError(`You have ${balance} ${creditWord(balance)}. Allocate fewer, or answer surveys to earn more.`)
+      return
+    }
+    const parsed = validateSurveyInput(
+      {
+        id: initial?.id,
+        title,
+        description,
+        tags,
+        publish,
+        minCompletionSeconds: shownMinSeconds,
+        creditsToAllocate,
+        questions,
+      },
+      rules,
+    )
     if (!parsed.ok) {
       setError(parsed.message)
       return
@@ -103,25 +141,6 @@ export function CreateForm({
         setError(result.message)
         setPending(null)
       }
-    })
-  }
-
-  function raise() {
-    if (!initial?.id) {
-      setNotice("Save a draft first, then raise the cap from here or the dashboard.")
-      return
-    }
-    setPending("raise")
-    startTransition(async () => {
-      const result = await raiseCapAction(initial.id!)
-      setPending(null)
-      setConfirmRaise(false)
-      if (!result.ok) {
-        setError(result.message)
-        return
-      }
-      if (result.data) setCap(result.data.responseCap)
-      setNotice(`Cap is now ${result.data?.responseCap ?? cap + rules.raiseCapStep}.`)
     })
   }
 
@@ -196,31 +215,61 @@ export function CreateForm({
           </div>
         </div>
         <div className="rounded-2xl border border-line bg-white p-4">
-          <p className="text-sm font-medium">Response cap: {cap} (included in free quota)</p>
-          <p className="mt-1 text-xs text-muted">About {formatMinutes(estimateMinutes(questions.length))} to answer.</p>
-          {confirmRaise ? (
-            <div className="mt-3 space-y-2">
-              <p className="text-sm text-muted">
-                Spend {rules.raiseCapCost} credits to add {rules.raiseCapStep} responses?
-              </p>
-              <div className="flex gap-2">
-                <button type="button" className={btnPrimary} onClick={raise} disabled={pending !== null}>
-                  Confirm
-                </button>
-                <button type="button" className={btnSecondary} onClick={() => setConfirmRaise(false)}>
-                  Cancel
-                </button>
+          {initial?.searchCode ? (
+            <div className="mb-3">
+              <p className="text-sm font-medium">Search code</p>
+              <div className="mt-2">
+                <SearchCode code={initial.searchCode} />
               </div>
+              <p className="mt-2 text-xs text-muted">People can type this code on Browse to find the survey.</p>
             </div>
           ) : (
-            <button
-              type="button"
-              className={`${btnSecondary} mt-3 w-full`}
-              onClick={() => (initial?.id ? setConfirmRaise(true) : setNotice("Save a draft first, then raise the cap."))}
-            >
-              ↑ Raise cap with credits
-            </button>
+            <p className="mb-3 text-xs text-muted">A search code is assigned when you save.</p>
           )}
+          <label className="block text-sm font-medium">
+            Credits to allocate
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={creditsToAllocate}
+              onChange={(event) => setCreditsToAllocate(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
+              className="mt-2 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none ring-amber focus:ring-2"
+            />
+          </label>
+          <p className="mt-2 text-xs leading-5 text-muted">
+            1 credit covers {rules.questionsPerCredit} questions. This survey has {questionCount}{" "}
+            {questionCount === 1 ? "question" : "questions"}, so each response costs {unit} {creditWord(unit)}.{" "}
+            {creditsToAllocate} {creditWord(creditsToAllocate)} fund {fundedSlots}{" "}
+            {fundedSlots === 1 ? "response" : "responses"}. A valid answer earns {unit} {creditWord(unit)}.
+          </p>
+          {leftover > 0 ? (
+            <p className="mt-1 text-xs text-muted">
+              {leftover} {creditWord(leftover)} {leftover === 1 ? "does" : "do"} not complete another response.
+            </p>
+          ) : null}
+          <p className="mt-2 text-xs text-muted">You have {balance} {creditWord(balance)}.</p>
+          <label className="mt-3 block text-sm font-medium">
+            Minimum completion time (seconds)
+            <input
+              type="number"
+              min={0}
+              max={maxMinSeconds}
+              step={1}
+              value={shownMinSeconds}
+              onChange={(event) => {
+                setMinTouched(true)
+                const next = Math.floor(Number(event.target.value) || 0)
+                setMinSeconds(Math.min(Math.max(0, next), maxMinSeconds))
+              }}
+              className="mt-2 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none ring-amber focus:ring-2"
+            />
+          </label>
+          <p className="mt-2 text-xs leading-5 text-muted">
+            Maximum is {maxMinSeconds} seconds ({rules.minSecondsPerQuestion} seconds per question). Default is{" "}
+            {formatMinTime(rules.defaultMinCompletionSeconds)}, or the maximum when the survey is shorter. About{" "}
+            {formatMinutes(estimateMinutes(questionCount))} to answer.
+          </p>
         </div>
         {initial?.id ? (
           <button type="button" onClick={removeDraft} disabled={pending !== null} className="text-sm text-muted underline">
@@ -341,7 +390,8 @@ export function CreateForm({
           </button>
         </div>
         <p className="mt-3 text-right text-xs text-muted">
-          Your first published survey is free. After that, publishing costs {rules.extraSurveyCost} credits.
+          Publishing spends the credits you allocate. Drafts are free. Promotion is separate ({rules.promoteCost} credits for{" "}
+          {rules.promoteDays} days).
         </p>
       </div>
     </div>

@@ -19,7 +19,11 @@ export function buildDashboard(input: {
   id: string
   title: string
   status: SurveyStatus
+  tags: string[]
+  searchCode: string
   responseCap: number
+  creditsAllocated: number
+  minCompletionSeconds: number
   promotedUntil: string | null
   questions: PublicQuestion[]
   responses: ResponseRow[]
@@ -104,7 +108,12 @@ export function buildDashboard(input: {
     id: input.id,
     title: input.title,
     status: input.status,
+    tags: input.tags,
+    searchCode: input.searchCode,
     responseCap: input.responseCap,
+    creditsAllocated: input.creditsAllocated,
+    minCompletionSeconds: input.minCompletionSeconds,
+    questionCount: input.questions.length,
     started,
     submitted: submitted.length,
     valid,

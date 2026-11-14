@@ -23,6 +23,10 @@ export function ledgerReasonLabel(reason: LedgerEntry["reason"]) {
       return "Promoted a survey"
     case "create_survey":
       return "Published an extra survey"
+    case "signup_grant":
+      return "Starting credits"
+    case "fund_survey":
+      return "Funded survey responses"
   }
 }
 

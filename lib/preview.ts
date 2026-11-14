@@ -1,4 +1,4 @@
-import { defaultRules, estimateMinutes } from "@/lib/config"
+import { creditUnit, estimateMinutes } from "@/lib/config"
 import type {
   AppUser,
   DashboardModel,
@@ -14,8 +14,7 @@ export const previewUser: AppUser = {
   displayName: "Amina",
   avatarUrl: null,
   initials: "AM",
-  creditBalance: 24,
-  freeCreatesRemaining: 0,
+  creditBalance: 12,
   preview: true,
 }
 
@@ -28,9 +27,11 @@ export type PreviewSurvey = {
   title: string
   description: string
   tags: string[]
+  searchCode: string
   responseCount: number
   responseCap: number
   estimatedMinutes: number
+  minCompletionSeconds: number
   ownerId: string
   questions: PreviewQuestion[]
 }
@@ -129,6 +130,7 @@ const studyQuestions: PreviewQuestion[] = [
 
 function choiceSurvey(
   id: string,
+  searchCode: string,
   title: string,
   description: string,
   tags: string[],
@@ -140,9 +142,11 @@ function choiceSurvey(
     title,
     description,
     tags,
+    searchCode,
     responseCount,
     responseCap,
     estimatedMinutes: estimateMinutes(4),
+    minCompletionSeconds: 60,
     ownerId: "someone-else",
     questions: [
       {
@@ -199,14 +203,17 @@ export const previewSurveys: PreviewSurvey[] = [
     title: "Weekend study habits of university students",
     description: "Share how you study on weekends to help improve student support.",
     tags: ["Academic Life", "University"],
+    searchCode: "K7M4QP",
     responseCount: 12,
     responseCap: 30,
     estimatedMinutes: 3,
+    minCompletionSeconds: 60,
     ownerId: "someone-else",
     questions: studyQuestions,
   },
   choiceSurvey(
     "preview-cafe",
+    "H3N8WC",
     "Cafeteria food satisfaction",
     "Give feedback on campus dining options and quality.",
     ["Campus Life", "Food"],
@@ -215,6 +222,7 @@ export const previewSurveys: PreviewSurvey[] = [
   ),
   choiceSurvey(
     "preview-intern",
+    "P4R6TN",
     "Internship application experiences",
     "Share your internship search journey and outcomes.",
     ["Career", "Experiences"],
@@ -223,6 +231,7 @@ export const previewSurveys: PreviewSurvey[] = [
   ),
   choiceSurvey(
     "preview-sleep",
+    "M2V9KD",
     "Sleep schedule during midterms",
     "Help us understand student sleep patterns during exam season.",
     ["Health", "Wellbeing"],
@@ -232,6 +241,7 @@ export const previewSurveys: PreviewSurvey[] = [
   {
     ...choiceSurvey(
       "preview-edtech",
+      "Q8C3YF",
       "Student experiences with online learning platforms",
       "Help improve edtech tools by sharing your experiences.",
       ["Academics", "Tools"],
@@ -243,6 +253,7 @@ export const previewSurveys: PreviewSurvey[] = [
   {
     ...choiceSurvey(
       "preview-mental",
+      "B5T7HJ",
       "Campus mental health resources awareness survey",
       "Share your awareness and feedback to support student wellbeing.",
       ["Health", "Campus"],
@@ -261,10 +272,11 @@ export function previewCards(): { promoted: SurveyCardData[]; rest: SurveyCardDa
     title: survey.title,
     description: survey.description,
     tags: survey.tags,
+    searchCode: survey.searchCode,
     responseCount: survey.responseCount,
     responseCap: survey.responseCap,
     estimatedMinutes: survey.estimatedMinutes,
-    reward: defaultRules.rewardPerValidCompletion,
+    reward: creditUnit(survey.questions.length),
     isPromoted: promotedIds.has(survey.id),
     isOwner: false,
     answered: false,
@@ -300,9 +312,13 @@ export const previewOwned: OwnedSurvey[] = [
     title: "Weekend study habits of university students",
     description:
       "This survey explores how university students spend their weekends studying, including time spent, study locations, and productivity habits.",
+    tags: ["Study habits", "Campus life"],
+    searchCode: "WKND8H",
     status: "open",
-    responseCount: 28,
-    responseCap: 40,
+    responseCount: 8,
+    responseCap: 10,
+    creditsAllocated: 10,
+    minCompletionSeconds: 60,
     estimatedMinutes: 3,
     isPromoted: false,
     publishedAt: "2026-11-10T15:00:00.000Z",
@@ -312,9 +328,13 @@ export const previewOwned: OwnedSurvey[] = [
     id: "preview-draft",
     title: "Library hours pilot feedback",
     description: "A draft about late-night library access.",
+    tags: ["Library"],
+    searchCode: "LIB4Q2",
     status: "draft",
     responseCount: 0,
-    responseCap: 10,
+    responseCap: 0,
+    creditsAllocated: 0,
+    minCompletionSeconds: 40,
     estimatedMinutes: 2,
     isPromoted: false,
     publishedAt: null,
@@ -326,12 +346,17 @@ export const previewDashboard: DashboardModel = {
   id: "preview-owned",
   title: "Weekend study habits of university students",
   status: "open",
-  responseCap: 40,
-  started: 34,
-  submitted: 28,
-  valid: 24,
-  invalid: 4,
-  completionRate: 82,
+  tags: ["Study habits", "Campus life"],
+  searchCode: "WKND8H",
+  responseCap: 10,
+  creditsAllocated: 10,
+  minCompletionSeconds: 60,
+  questionCount: 8,
+  started: 9,
+  submitted: 8,
+  valid: 6,
+  invalid: 2,
+  completionRate: 89,
   isPromoted: false,
   promotedUntil: null,
   previewColumns: ["Q1", "Q2"],
@@ -340,13 +365,13 @@ export const previewDashboard: DashboardModel = {
       questionId: "hours",
       prompt: "How many hours do you study on weekends?",
       kind: "single",
-      total: 28,
+      total: 8,
       rows: [
-        { label: "0–1 hours", count: 11, percent: 39 },
-        { label: "1–3 hours", count: 8, percent: 29 },
-        { label: "3–5 hours", count: 5, percent: 18 },
-        { label: "5–7 hours", count: 2, percent: 7 },
-        { label: "7+ hours", count: 2, percent: 7 },
+        { label: "0–1 hours", count: 4, percent: 50 },
+        { label: "1–3 hours", count: 2, percent: 25 },
+        { label: "3–5 hours", count: 2, percent: 25 },
+        { label: "5–7 hours", count: 0, percent: 0 },
+        { label: "7+ hours", count: 0, percent: 0 },
       ],
     },
   ],
@@ -361,28 +386,68 @@ export const previewDashboard: DashboardModel = {
 
 export const previewLedger: LedgerEntry[] = [
   {
-    id: "l1",
-    amount: 8,
-    balanceAfter: 24,
+    id: "l6",
+    amount: 2,
+    balanceAfter: 12,
     reason: "survey_completion",
-    surveyTitle: "Cafeteria food satisfaction",
-    createdAt: "2026-11-13T13:10:00.000Z",
+    surveyTitle: "Exam week workload",
+    createdAt: "2026-11-13T16:40:00.000Z",
   },
   {
-    id: "l2",
-    amount: -12,
-    balanceAfter: 16,
-    reason: "promote",
-    surveyTitle: "Library hours pilot feedback",
-    createdAt: "2026-11-12T18:00:00.000Z",
+    id: "l5",
+    amount: 2,
+    balanceAfter: 10,
+    reason: "survey_completion",
+    surveyTitle: "Lab report habits",
+    createdAt: "2026-11-13T14:10:00.000Z",
+  },
+  {
+    id: "l4",
+    amount: 2,
+    balanceAfter: 8,
+    reason: "survey_completion",
+    surveyTitle: "Commute and study time",
+    createdAt: "2026-11-13T11:05:00.000Z",
+  },
+  {
+    id: "l3b",
+    amount: 2,
+    balanceAfter: 6,
+    reason: "survey_completion",
+    surveyTitle: "Office hours feedback",
+    createdAt: "2026-11-13T10:00:00.000Z",
   },
   {
     id: "l3",
-    amount: -8,
-    balanceAfter: 28,
-    reason: "raise_cap",
+    amount: 2,
+    balanceAfter: 4,
+    reason: "survey_completion",
+    surveyTitle: "Group project check-in",
+    createdAt: "2026-11-13T09:20:00.000Z",
+  },
+  {
+    id: "l2",
+    amount: -10,
+    balanceAfter: 2,
+    reason: "fund_survey",
     surveyTitle: "Weekend study habits of university students",
-    createdAt: "2026-11-11T16:20:00.000Z",
+    createdAt: "2026-11-12T18:00:00.000Z",
+  },
+  {
+    id: "l1b",
+    amount: 2,
+    balanceAfter: 12,
+    reason: "survey_completion",
+    surveyTitle: "Fifteen-question methods survey",
+    createdAt: "2026-11-11T15:00:00.000Z",
+  },
+  {
+    id: "l1",
+    amount: 10,
+    balanceAfter: 10,
+    reason: "signup_grant",
+    surveyTitle: null,
+    createdAt: "2026-11-10T09:00:00.000Z",
   },
 ]
 
