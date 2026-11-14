@@ -1,6 +1,7 @@
 import { creditUnit } from "@/lib/config"
 import { getPreviewSurvey, type PreviewQuestion } from "@/lib/preview"
 import type { InvalidReason } from "@/lib/types"
+import { checkAnswer } from "@/lib/validation"
 
 type Submission = {
   questionId?: string
@@ -29,7 +30,9 @@ export function scorePreview(surveyId: string, answers: unknown, elapsedSeconds:
     const answer = byId.get(question.id)
     if (!answer) return { ok: false as const, message: "Please answer every question" }
     const problem = checkQuestion(question, answer)
-    if (problem === "invalid") return { ok: false as const, message: "Please complete every question" }
+    if (problem !== "ok" && problem !== "screen") {
+      return { ok: false as const, message: question.validation ? problem : "Please complete every question" }
+    }
     if (problem === "screen") failed = true
   }
 
@@ -58,23 +61,15 @@ export function scorePreview(surveyId: string, answers: unknown, elapsedSeconds:
   }
 }
 
-function checkQuestion(question: PreviewQuestion, answer: Submission): "ok" | "invalid" | "screen" {
-  if (question.kind === "short") {
-    const text = (answer.text ?? "").trim()
-    if (text.length < 1 || text.length > 500) return "invalid"
-    return "ok"
-  }
-  if (question.kind === "rating") {
-    if (typeof answer.rating !== "number") return "invalid"
-    if (answer.rating < (question.ratingMin ?? 1) || answer.rating > (question.ratingMax ?? 5)) return "invalid"
-    return "ok"
-  }
-  const indexes = answer.optionIndexes ?? []
-  if (question.kind === "single" && indexes.length !== 1) return "invalid"
-  if (question.kind === "multiple" && indexes.length < 1) return "invalid"
-  if (indexes.some((index) => index < 0 || index >= question.options.length)) return "invalid"
+function checkQuestion(question: PreviewQuestion, answer: Submission): "ok" | "screen" | string {
+  const checked = checkAnswer(question, {
+    optionIndexes: answer.optionIndexes ?? [],
+    text: answer.text ?? "",
+    rating: answer.rating ?? null,
+  })
+  if (!checked.ok) return checked.message
   if (question.correctOptionIndexes && question.correctOptionIndexes.length > 0) {
-    const selected = [...indexes].sort((a, b) => a - b).join(",")
+    const selected = "optionIndexes" in checked.value ? [...checked.value.optionIndexes].sort((a, b) => a - b).join(",") : ""
     const correct = [...question.correctOptionIndexes].sort((a, b) => a - b).join(",")
     if (selected !== correct) return "screen"
   }

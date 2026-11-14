@@ -5,6 +5,7 @@ import {
   type ProductRules,
 } from "@/lib/config"
 import type { QuestionInput, QuestionKind, SurveyInput } from "@/lib/types"
+import { compileQuestionValidation } from "@/lib/validation"
 
 const kinds: QuestionKind[] = ["single", "multiple", "short", "rating"]
 
@@ -96,6 +97,17 @@ export function exampleSurvey(): { title: string; description: string; tags: str
   }
 }
 
+function attachValidation(
+  built: QuestionInput,
+  source: QuestionInput,
+  optionCount: number,
+): { ok: true; value: QuestionInput } | { ok: false; message: string } {
+  const compiled = compileQuestionValidation(built.kind, optionCount, built.isScreening, source.validation)
+  if (!compiled.ok) return compiled
+  if (!compiled.validation) return { ok: true, value: built }
+  return { ok: true, value: { ...built, validation: compiled.validation } }
+}
+
 export function validateSurveyInput(
   input: SurveyInput,
   rules?: Pick<ProductRules, "questionsPerCredit" | "minSecondsPerQuestion">,
@@ -173,17 +185,23 @@ export function validateSurveyInput(
       } else {
         correct = []
       }
-      questions.push({
-        prompt,
-        kind: question.kind,
-        options,
-        ratingMin: 1,
-        ratingMax: 5,
-        ratingMinLabel: "",
-        ratingMaxLabel: "",
-        isScreening: question.isScreening,
-        correctOptionIndexes: correct,
-      })
+      const choice = attachValidation(
+        {
+          prompt,
+          kind: question.kind,
+          options,
+          ratingMin: 1,
+          ratingMax: 5,
+          ratingMinLabel: "",
+          ratingMaxLabel: "",
+          isScreening: question.isScreening,
+          correctOptionIndexes: correct,
+        },
+        question,
+        options.length,
+      )
+      if (!choice.ok) return choice
+      questions.push(choice.value)
       continue
     }
 
@@ -212,31 +230,43 @@ export function validateSurveyInput(
       ) {
         return { ok: false, message: "Rating labels must be 40 characters or fewer." }
       }
-      questions.push({
-        prompt,
-        kind: "rating",
-        options: [],
-        ratingMin,
-        ratingMax,
-        ratingMinLabel,
-        ratingMaxLabel,
-        isScreening: false,
-        correctOptionIndexes: [],
-      })
+      const rating = attachValidation(
+        {
+          prompt,
+          kind: "rating",
+          options: [],
+          ratingMin,
+          ratingMax,
+          ratingMinLabel,
+          ratingMaxLabel,
+          isScreening: false,
+          correctOptionIndexes: [],
+        },
+        question,
+        0,
+      )
+      if (!rating.ok) return rating
+      questions.push(rating.value)
       continue
     }
 
-    questions.push({
-      prompt,
-      kind: "short",
-      options: [],
-      ratingMin: 1,
-      ratingMax: 5,
-      ratingMinLabel: "",
-      ratingMaxLabel: "",
-      isScreening: false,
-      correctOptionIndexes: [],
-    })
+    const short = attachValidation(
+      {
+        prompt,
+        kind: "short",
+        options: [],
+        ratingMin: 1,
+        ratingMax: 5,
+        ratingMinLabel: "",
+        ratingMaxLabel: "",
+        isScreening: false,
+        correctOptionIndexes: [],
+      },
+      question,
+      0,
+    )
+    if (!short.ok) return short
+    questions.push(short.value)
   }
 
   const questionsPerCredit = rules?.questionsPerCredit ?? productConfig.questionsPerCredit

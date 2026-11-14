@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState, useTransition } from "react"
+import { useState, useRef, useTransition } from "react"
 import { deleteDraftAction, saveSurveyAction } from "@/lib/actions"
 import {
   creditUnit,
@@ -16,7 +16,9 @@ import {
 import { SearchCode } from "@/components/survey-meta"
 import { questionKindLabel } from "@/lib/labels"
 import { blankQuestion, type DraftQuestion, validateSurveyInput } from "@/lib/survey-form"
-import type { QuestionKind } from "@/lib/types"
+import type { FormatType, QuestionKind, QuestionValidation } from "@/lib/types"
+import { formatTypes } from "@/lib/types"
+import { formatTypeLabel, validationForKind, validationSummary } from "@/lib/validation"
 import { btnPrimary, btnSecondary } from "@/components/ui"
 
 const kinds: QuestionKind[] = ["single", "multiple", "short", "rating"]
@@ -343,6 +345,11 @@ export function CreateForm({
                         Screening question — wrong answer forfeits credits
                       </p>
                     ) : null}
+                    {validationSummary(question.kind, question.validation) ? (
+                      <p className="mt-3 inline-flex rounded-full border border-amber/40 bg-amber-soft px-3 py-1 text-xs font-medium text-amber-deep">
+                        Data validation · {validationSummary(question.kind, question.validation)}
+                      </p>
+                    ) : null}
                   </button>
                   <div className="flex flex-col gap-1">
                     <button type="button" className="text-xs text-muted" onClick={() => moveQuestion(index, -1)} aria-label="Move up">
@@ -422,11 +429,13 @@ function QuestionEditor({
           value={question.kind}
           onChange={(event) => {
             const kind = event.target.value as QuestionKind
+            const screening = kind === "single" || kind === "multiple" ? question.isScreening : false
             onChange({
               kind,
-              isScreening: kind === "single" || kind === "multiple" ? question.isScreening : false,
-              options: kind === "single" || kind === "multiple" ? question.options.length ? question.options : ["", ""] : [],
+              isScreening: screening,
+              options: kind === "single" || kind === "multiple" ? (question.options.length ? question.options : ["", ""]) : [],
               correctOptionIndexes: [],
+              validation: validationForKind(kind, screening ? markRequired(question.validation) : question.validation),
             })
           }}
           className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2"
@@ -495,6 +504,7 @@ function QuestionEditor({
                 onChange({
                   isScreening: event.target.checked,
                   correctOptionIndexes: event.target.checked ? question.correctOptionIndexes : [],
+                  validation: event.target.checked ? validationForKind(question.kind, markRequired(question.validation)) : question.validation,
                 })
               }
             />
@@ -546,6 +556,202 @@ function QuestionEditor({
           </label>
         </div>
       ) : null}
+      <ValidationRules question={question} onChange={onChange} />
     </div>
   )
+}
+
+function ValidationRules({
+  question,
+  onChange,
+}: {
+  question: DraftQuestion
+  onChange: (patch: Partial<DraftQuestion>) => void
+}) {
+  const active = validationSummary(question.kind, question.validation)
+  const [open, setOpen] = useState(Boolean(active))
+  const rules = question.validation
+  const required = question.isScreening || rules?.required !== false
+  const formatType = rules?.formatType ?? "none"
+  const numeric = formatType === "integer" || formatType === "decimal"
+
+  function update(patch: Partial<QuestionValidation>) {
+    const next: QuestionValidation = { ...rules, required: rules?.required !== false, ...patch }
+    if (next.formatType !== "custom_regex") delete next.customRegex
+    if (next.formatType !== "integer" && next.formatType !== "decimal") {
+      if (question.kind === "short") {
+        delete next.minValue
+        delete next.maxValue
+      }
+    }
+    if (next.formatType === "none") delete next.formatType
+    onChange({ validation: validationForKind(question.kind, next) })
+  }
+
+  return (
+    <div className="rounded-2xl border border-amber/30 bg-amber-soft/70 p-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="text-sm font-semibold text-amber-deep"
+      >
+        {open ? "– Data Validation Rules" : "+ Data Validation Rules"}
+      </button>
+      {open ? (
+        <div className="mt-3 space-y-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={required}
+              disabled={question.isScreening}
+              onChange={(event) => update({ required: event.target.checked })}
+            />
+            Presence Check (Required)
+          </label>
+          <p className="text-xs leading-5 text-muted">
+            {question.isScreening
+              ? "Screening questions stay required."
+              : "Turn this off to allow a blank answer. Other checks still apply once the question is filled in."}
+          </p>
+          {question.kind === "short" ? (
+            <>
+              <div>
+                <p className="text-sm font-medium">Length Check</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <NumberField
+                    label="Minimum characters"
+                    min={1}
+                    max={500}
+                    value={rules?.minLength}
+                    onValue={(minLength) => update({ minLength })}
+                  />
+                  <NumberField
+                    label="Maximum characters"
+                    min={1}
+                    max={500}
+                    value={rules?.maxLength}
+                    onValue={(maxLength) => update({ maxLength })}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-muted">Leave blank to keep the 1–500 character limit.</p>
+              </div>
+              <label className="block text-sm">
+                Format / Type Check
+                <select
+                  value={formatType}
+                  onChange={(event) => update({ formatType: event.target.value as FormatType })}
+                  className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2"
+                >
+                  {formatTypes.map((format) => (
+                    <option key={format} value={format}>
+                      {formatTypeLabel(format)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {formatType === "custom_regex" ? (
+                <label className="block text-sm">
+                  Custom regular expression
+                  <input
+                    value={rules?.customRegex ?? ""}
+                    maxLength={120}
+                    placeholder="^[A-Z]{2}[0-9]{4}$"
+                    onChange={(event) => update({ customRegex: event.target.value, formatType: "custom_regex" })}
+                    className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 font-mono text-sm outline-none ring-amber focus:ring-2"
+                  />
+                </label>
+              ) : null}
+              {numeric ? (
+                <div>
+                  <p className="text-sm font-medium">Range Check</p>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    <NumberField label="Minimum value" value={rules?.minValue} onValue={(minValue) => update({ minValue })} />
+                    <NumberField label="Maximum value" value={rules?.maxValue} onValue={(maxValue) => update({ maxValue })} />
+                  </div>
+                  <p className="mt-2 text-xs text-muted">For example, age 12–25. Leave either box blank if it has no limit.</p>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+          {question.kind === "multiple" ? (
+            <div>
+              <p className="text-sm font-medium">Selection Range Check</p>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <NumberField
+                  label="Minimum selections"
+                  min={0}
+                  max={question.options.length}
+                  value={rules?.minValue}
+                  onValue={(minValue) => update({ minValue })}
+                />
+                <NumberField
+                  label="Maximum selections"
+                  min={0}
+                  max={question.options.length}
+                  value={rules?.maxValue}
+                  onValue={(maxValue) => update({ maxValue })}
+                />
+              </div>
+              <p className="mt-2 text-xs text-muted">
+                Leave blank for the usual rule: at least 1 when the question is required, and no extra maximum.
+              </p>
+            </div>
+          ) : null}
+          <label className="block text-sm">
+            Custom error message
+            <input
+              value={rules?.errorMessage ?? ""}
+              maxLength={160}
+              placeholder="Shown when a check fails. Optional."
+              onChange={(event) => update({ errorMessage: event.target.value })}
+              className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none ring-amber focus:ring-2"
+            />
+          </label>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function NumberField({
+  label,
+  value,
+  onValue,
+  min,
+  max,
+}: {
+  label: string
+  value: number | undefined
+  onValue: (value: number | undefined) => void
+  min?: number
+  max?: number
+}) {
+  return (
+    <label className="text-sm">
+      {label}
+      <input
+        type="number"
+        inputMode="decimal"
+        min={min}
+        max={max}
+        value={value ?? ""}
+        onChange={(event) => {
+          const raw = event.target.value
+          if (raw === "") {
+            onValue(undefined)
+            return
+          }
+          const next = Number(raw)
+          onValue(Number.isFinite(next) ? next : undefined)
+        }}
+        className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 outline-none ring-amber focus:ring-2"
+      />
+    </label>
+  )
+}
+
+function markRequired(validation: QuestionValidation | undefined): QuestionValidation | undefined {
+  if (!validation) return undefined
+  return { ...validation, required: true }
 }
