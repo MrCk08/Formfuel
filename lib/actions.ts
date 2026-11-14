@@ -46,7 +46,7 @@ export async function saveSurveyAction(input: SurveyInput): Promise<ActionResult
   const id = typeof data === "object" && data && "id" in data ? String(data.id) : ""
   if (!id) return { ok: false, message: "Could not save the survey" }
   refreshSurveyPaths(id)
-  if (parsed.value.publish) redirect(`/surveys/${id}/dashboard`)
+  if (parsed.value.publish) redirect(`/surveys/${id}/dashboard?published=1`)
   redirect(`/create/${id}`)
 }
 
@@ -60,15 +60,28 @@ export async function deleteDraftAction(surveyId: string): Promise<ActionResult>
   redirect("/my-surveys")
 }
 
-export async function raiseCapAction(surveyId: string): Promise<ActionResult<{ responseCap: number; creditBalance: number }>> {
+export async function fundSurveyAction(
+  surveyId: string,
+  credits: number,
+): Promise<ActionResult<{ responseCap: number; creditsAllocated: number; creditBalance: number }>> {
   const user = await requireUser()
   if (user.preview) return { ok: false, message: "Connect Supabase to spend credits." }
+  if (!Number.isInteger(credits) || credits < 1) {
+    return { ok: false, message: "Enter a whole number of credits to add." }
+  }
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc("raise_cap", { p_survey_id: surveyId })
+  const { data, error } = await supabase.rpc("fund_survey", { p_survey_id: surveyId, p_credits: credits })
   if (error) return { ok: false, message: cleanError(error.message) }
   refreshSurveyPaths(surveyId)
-  const row = data as { responseCap?: number; creditBalance?: number }
-  return { ok: true, data: { responseCap: row.responseCap ?? 0, creditBalance: row.creditBalance ?? 0 } }
+  const row = data as { responseCap?: number; creditsAllocated?: number; creditBalance?: number }
+  return {
+    ok: true,
+    data: {
+      responseCap: row.responseCap ?? 0,
+      creditsAllocated: row.creditsAllocated ?? 0,
+      creditBalance: row.creditBalance ?? 0,
+    },
+  }
 }
 
 export async function promoteSurveyAction(surveyId: string): Promise<ActionResult<{ promotedUntil: string; creditBalance: number }>> {

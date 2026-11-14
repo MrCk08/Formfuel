@@ -1,4 +1,9 @@
-import { productConfig } from "@/lib/config"
+import {
+  creditUnit,
+  maxMinCompletionSeconds,
+  productConfig,
+  type ProductRules,
+} from "@/lib/config"
 import type { QuestionInput, QuestionKind, SurveyInput } from "@/lib/types"
 
 const kinds: QuestionKind[] = ["single", "multiple", "short", "rating"]
@@ -91,7 +96,10 @@ export function exampleSurvey(): { title: string; description: string; tags: str
   }
 }
 
-export function validateSurveyInput(input: SurveyInput): { ok: true; value: SurveyInput } | { ok: false; message: string } {
+export function validateSurveyInput(
+  input: SurveyInput,
+  rules?: Pick<ProductRules, "questionsPerCredit" | "minSecondsPerQuestion">,
+): { ok: true; value: SurveyInput } | { ok: false; message: string } {
   const title = input.title.trim()
   const description = input.description.trim()
   if (title.length < productConfig.titleMin || title.length > productConfig.titleMax) {
@@ -231,6 +239,32 @@ export function validateSurveyInput(input: SurveyInput): { ok: true; value: Surv
     })
   }
 
+  const questionsPerCredit = rules?.questionsPerCredit ?? productConfig.questionsPerCredit
+  const secondsPerQuestion = rules?.minSecondsPerQuestion ?? productConfig.minSecondsPerQuestion
+  const maxMinSeconds = maxMinCompletionSeconds(questions.length, secondsPerQuestion)
+  if (!Number.isInteger(input.minCompletionSeconds) || input.minCompletionSeconds < 0) {
+    return { ok: false, message: "Minimum time must be a whole number of seconds, zero or more." }
+  }
+  if (input.minCompletionSeconds > maxMinSeconds) {
+    return {
+      ok: false,
+      message: `Minimum time cannot exceed ${maxMinSeconds} seconds for ${questions.length} ${questions.length === 1 ? "question" : "questions"}.`,
+    }
+  }
+
+  const unit = creditUnit(questions.length, questionsPerCredit)
+  let creditsToAllocate = input.creditsToAllocate
+  if (input.publish) {
+    if (!Number.isInteger(creditsToAllocate) || creditsToAllocate < unit) {
+      return {
+        ok: false,
+        message: `Allocate at least ${unit} ${unit === 1 ? "credit" : "credits"} so one person can respond.`,
+      }
+    }
+  } else if (!Number.isInteger(creditsToAllocate) || creditsToAllocate < 0) {
+    creditsToAllocate = 0
+  }
+
   return {
     ok: true,
     value: {
@@ -239,6 +273,8 @@ export function validateSurveyInput(input: SurveyInput): { ok: true; value: Surv
       description,
       tags,
       publish: input.publish,
+      minCompletionSeconds: input.minCompletionSeconds,
+      creditsToAllocate,
       questions,
     },
   }

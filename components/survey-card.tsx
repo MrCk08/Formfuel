@@ -5,6 +5,7 @@ import { useState, useTransition } from "react"
 import { BookmarkIcon } from "@/components/icons"
 import { btnPrimary } from "@/components/ui"
 import { formatMinutes } from "@/lib/config"
+import { SearchCode, TagList } from "@/components/survey-meta"
 import { toggleBookmarkAction } from "@/lib/actions"
 import type { SurveyCardData } from "@/lib/types"
 
@@ -22,16 +23,13 @@ export function SurveyCard({ survey, featured = false }: { survey: SurveyCardDat
         <h3 className="flex-1 text-base font-semibold leading-snug">{survey.title}</h3>
         {featured ? null : <BookmarkButton surveyId={survey.id} initial={survey.bookmarked} />}
       </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <SearchCode code={survey.searchCode} />
+      </div>
       <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted">{survey.description}</p>
-      {featured ? null : (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {survey.tags.map((tag) => (
-            <span key={tag} className="rounded-full bg-chip px-2.5 py-1 text-xs text-muted">
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="mt-3">
+        <TagList tags={survey.tags} linked />
+      </div>
       <p className="mt-4 text-sm text-muted">
         {formatMinutes(survey.estimatedMinutes)}
         <span className="px-1.5">·</span>

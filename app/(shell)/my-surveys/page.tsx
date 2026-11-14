@@ -3,6 +3,7 @@ import Link from "next/link"
 import { requireUser } from "@/lib/auth"
 import { listOwned } from "@/lib/data"
 import { statusLabel } from "@/lib/labels"
+import { SearchCode, TagList } from "@/components/survey-meta"
 import { DataError, EmptyState, btnPrimary, btnSecondary } from "@/components/ui"
 
 export const metadata = { title: "My surveys" }
@@ -26,9 +27,7 @@ async function MySurveysContent() {
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">My surveys</h1>
           <p className="mt-2 text-sm text-muted">
-            {user.freeCreatesRemaining > 0
-              ? `You can still publish ${user.freeCreatesRemaining} free ${user.freeCreatesRemaining === 1 ? "survey" : "surveys"}.`
-              : "Publishing another survey spends credits."}
+            Each survey has a search code. Publishing spends the credits you allocate to its responses.
           </p>
         </div>
         <Link href="/create" className={btnPrimary}>
@@ -44,12 +43,18 @@ async function MySurveysContent() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-semibold">{survey.title}</h2>
+                  <SearchCode code={survey.searchCode} />
                   <span className="rounded-full bg-chip px-2 py-0.5 text-xs font-semibold text-muted">{statusLabel(survey.status)}</span>
                   {survey.isPromoted ? <span className="text-xs font-semibold text-amber-deep">Promoted</span> : null}
                 </div>
                 <p className="mt-1 line-clamp-2 text-sm text-muted">{survey.description}</p>
+                <div className="mt-2">
+                  <TagList tags={survey.tags} />
+                </div>
                 <p className="mt-2 text-sm text-muted">
-                  {survey.responseCount} / {survey.responseCap} responses
+                  {survey.status === "draft"
+                    ? "Draft · credits are spent when you publish"
+                    : `${survey.responseCount} / ${survey.responseCap} responses · ${survey.creditsAllocated} credits allocated`}
                 </p>
               </div>
               <div className="flex gap-2">

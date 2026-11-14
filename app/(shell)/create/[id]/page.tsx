@@ -29,13 +29,15 @@ async function EditContent({ params }: { params: Promise<{ id: string }> }) {
       <h1 className="mb-6 text-4xl font-semibold tracking-tight">Edit draft</h1>
       <CreateForm
         rules={rules}
+        balance={user.creditBalance}
         initial={{
           id: result.data.id,
           title: result.data.title,
           description: result.data.description,
           tags: result.data.tags,
+          searchCode: result.data.searchCode,
+          minCompletionSeconds: result.data.minCompletionSeconds,
           questions: result.data.questions,
-          responseCap: result.data.responseCap,
         }}
       />
     </div>

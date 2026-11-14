@@ -1,5 +1,5 @@
 import { cache } from "react"
-import { defaultRules, type ProductRules } from "@/lib/config"
+import { creditUnit, defaultRules, type ProductRules } from "@/lib/config"
 import { buildDashboard } from "@/lib/dashboard"
 import { cleanError } from "@/lib/errors"
 import {
@@ -26,27 +26,43 @@ import type {
 export type LoadResult<T> = { ok: true; data: T } | { ok: false; message: string }
 
 function mapRules(row: {
-  default_response_cap: number
-  reward_per_valid: number
-  raise_cap_step: number
-  raise_cap_cost: number
-  promote_cost: number
-  promote_days: number
-  extra_survey_cost: number
-  free_create_quota: number
-  min_completion_seconds: number
+  starting_credits?: number
+  questions_per_credit?: number
+  min_seconds_per_question?: number
+  default_min_completion_seconds?: number
+  promote_cost?: number
+  promote_days?: number
 }): ProductRules {
+  if (
+    typeof row.starting_credits !== "number" ||
+    typeof row.questions_per_credit !== "number" ||
+    typeof row.min_seconds_per_question !== "number" ||
+    typeof row.default_min_completion_seconds !== "number" ||
+    typeof row.promote_cost !== "number" ||
+    typeof row.promote_days !== "number"
+  ) {
+    return defaultRules
+  }
   return {
-    defaultResponseCap: row.default_response_cap,
-    rewardPerValidCompletion: row.reward_per_valid,
-    raiseCapStep: row.raise_cap_step,
-    raiseCapCost: row.raise_cap_cost,
+    startingCredits: row.starting_credits,
+    questionsPerCredit: row.questions_per_credit,
+    minSecondsPerQuestion: row.min_seconds_per_question,
+    defaultMinCompletionSeconds: row.default_min_completion_seconds,
     promoteCost: row.promote_cost,
     promoteDays: row.promote_days,
-    extraSurveyCost: row.extra_survey_cost,
-    freeCreateQuota: row.free_create_quota,
-    minCompletionSeconds: row.min_completion_seconds,
   }
+}
+
+function questionCountOf(value: unknown) {
+  if (Array.isArray(value)) {
+    const first = value[0] as { count?: number } | undefined
+    return typeof first?.count === "number" ? first.count : 0
+  }
+  if (value && typeof value === "object" && "count" in value) {
+    const count = (value as { count?: unknown }).count
+    return typeof count === "number" ? count : 0
+  }
+  return 0
 }
 
 export const getRules = cache(async (user: AppUser): Promise<ProductRules> => {
@@ -58,12 +74,11 @@ export const getRules = cache(async (user: AppUser): Promise<ProductRules> => {
 })
 
 export async function listBrowse(user: AppUser): Promise<
-  LoadResult<{ promoted: SurveyCardData[]; rest: SurveyCardData[]; reward: number }>
+  LoadResult<{ promoted: SurveyCardData[]; rest: SurveyCardData[] }>
 > {
   const rules = await getRules(user)
   if (user.preview) {
-    const cards = previewCards()
-    return { ok: true, data: { ...cards, reward: rules.rewardPerValidCompletion } }
+    return { ok: true, data: previewCards() }
   }
 
   const supabase = await createClient()
@@ -71,7 +86,7 @@ export async function listBrowse(user: AppUser): Promise<
     await Promise.all([
       supabase
         .from("surveys")
-        .select("id, title, description, tags, response_count, response_cap, estimated_minutes, promoted_until, published_at, owner_id")
+        .select("id, title, description, tags, search_code, response_count, response_cap, estimated_minutes, promoted_until, published_at, owner_id, questions(count)")
         .eq("status", "open")
         .order("published_at", { ascending: false }),
       supabase.from("responses").select("survey_id, status").eq("respondent_id", user.id),
@@ -94,10 +109,11 @@ export async function listBrowse(user: AppUser): Promise<
     title: survey.title,
     description: survey.description,
     tags: survey.tags ?? [],
+    searchCode: survey.search_code,
     responseCount: survey.response_count,
     responseCap: survey.response_cap,
     estimatedMinutes: survey.estimated_minutes,
-    reward: rules.rewardPerValidCompletion,
+    reward: creditUnit(questionCountOf(survey.questions), rules.questionsPerCredit),
     isPromoted: survey.promoted_until ? new Date(survey.promoted_until).getTime() > now : false,
     isOwner: survey.owner_id === user.id,
     answered: answered.has(survey.id),
@@ -110,7 +126,6 @@ export async function listBrowse(user: AppUser): Promise<
     data: {
       promoted: cards.filter((card) => card.isPromoted),
       rest: cards.filter((card) => !card.isPromoted),
-      reward: rules.rewardPerValidCompletion,
     },
   }
 }
@@ -120,7 +135,7 @@ export async function listOwned(user: AppUser): Promise<LoadResult<OwnedSurvey[]
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("surveys")
-    .select("id, title, description, status, response_count, response_cap, estimated_minutes, promoted_until, published_at, updated_at")
+    .select("id, title, description, tags, search_code, status, response_count, response_cap, credits_allocated, min_completion_seconds, estimated_minutes, promoted_until, published_at, updated_at")
     .eq("owner_id", user.id)
     .order("updated_at", { ascending: false })
 
@@ -132,9 +147,13 @@ export async function listOwned(user: AppUser): Promise<LoadResult<OwnedSurvey[]
       id: survey.id,
       title: survey.title,
       description: survey.description,
+      tags: survey.tags ?? [],
+      searchCode: survey.search_code,
       status: survey.status as SurveyStatus,
       responseCount: survey.response_count,
       responseCap: survey.response_cap,
+      creditsAllocated: survey.credits_allocated,
+      minCompletionSeconds: survey.min_completion_seconds,
       estimatedMinutes: survey.estimated_minutes,
       isPromoted: survey.promoted_until ? new Date(survey.promoted_until).getTime() > now : false,
       publishedAt: survey.published_at,
@@ -175,6 +194,9 @@ export async function listLedger(user: AppUser): Promise<LoadResult<LedgerEntry[
 export type AnswerPageData = {
   id: string
   title: string
+  tags: string[]
+  searchCode: string
+  minCompletionSeconds: number
   questions: PublicQuestion[]
   responseCount: number
   responseCap: number
@@ -196,6 +218,9 @@ export async function getAnswerPage(user: AppUser, id: string): Promise<LoadResu
         data: {
           id,
           title: previewDashboard.title,
+          tags: previewDashboard.tags,
+          searchCode: previewDashboard.searchCode,
+          minCompletionSeconds: previewDashboard.minCompletionSeconds,
           questions: [],
           responseCount: previewDashboard.submitted,
           responseCap: previewDashboard.responseCap,
@@ -212,6 +237,9 @@ export async function getAnswerPage(user: AppUser, id: string): Promise<LoadResu
       data: {
         id: survey.id,
         title: survey.title,
+        tags: survey.tags,
+        searchCode: survey.searchCode,
+        minCompletionSeconds: survey.minCompletionSeconds,
         questions: toPublicQuestions(survey.questions),
         responseCount: survey.responseCount,
         responseCap: survey.responseCap,
@@ -225,7 +253,7 @@ export async function getAnswerPage(user: AppUser, id: string): Promise<LoadResu
   const supabase = await createClient()
   const { data: survey, error } = await supabase
     .from("surveys")
-    .select("id, title, owner_id, status, response_count, response_cap")
+    .select("id, title, owner_id, status, response_count, response_cap, tags, search_code, min_completion_seconds")
     .eq("id", id)
     .maybeSingle()
   if (error) return { ok: false, message: cleanError(error.message) }
@@ -262,6 +290,9 @@ export async function getAnswerPage(user: AppUser, id: string): Promise<LoadResu
     data: {
       id: survey.id,
       title: survey.title,
+      tags: survey.tags ?? [],
+      searchCode: survey.search_code,
+      minCompletionSeconds: survey.min_completion_seconds,
       status: survey.status as SurveyStatus,
       responseCount: survey.response_count,
       responseCap: survey.response_cap,
@@ -298,7 +329,7 @@ export async function getDashboard(user: AppUser, id: string): Promise<LoadResul
   const supabase = await createClient()
   const { data: survey, error } = await supabase
     .from("surveys")
-    .select("id, title, status, owner_id, response_cap, promoted_until")
+    .select("id, title, status, owner_id, response_cap, promoted_until, tags, search_code, credits_allocated, min_completion_seconds")
     .eq("id", id)
     .maybeSingle()
   if (error) return { ok: false, message: cleanError(error.message) }
@@ -334,7 +365,11 @@ export async function getDashboard(user: AppUser, id: string): Promise<LoadResul
       id: survey.id,
       title: survey.title,
       status: survey.status as SurveyStatus,
+      tags: survey.tags ?? [],
+      searchCode: survey.search_code,
       responseCap: survey.response_cap,
+      creditsAllocated: survey.credits_allocated,
+      minCompletionSeconds: survey.min_completion_seconds,
       promotedUntil: survey.promoted_until,
       questions: questions.map((question) => ({
         id: question.id,
@@ -358,8 +393,11 @@ export type EditorSurvey = {
   title: string
   description: string
   tags: string[]
+  searchCode: string
   status: SurveyStatus
   responseCap: number
+  creditsAllocated: number
+  minCompletionSeconds: number
   questions: (QuestionInput & { key: string })[]
 }
 
@@ -386,8 +424,11 @@ function parseEditorSurvey(data: unknown): EditorSurvey | null {
     title: row.title,
     description: typeof row.description === "string" ? row.description : "",
     tags: Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    searchCode: typeof row.searchCode === "string" ? row.searchCode : "",
     status: row.status as SurveyStatus,
-    responseCap: typeof row.responseCap === "number" ? row.responseCap : 10,
+    responseCap: typeof row.responseCap === "number" ? row.responseCap : 0,
+    creditsAllocated: typeof row.creditsAllocated === "number" ? row.creditsAllocated : 0,
+    minCompletionSeconds: typeof row.minCompletionSeconds === "number" ? row.minCompletionSeconds : 0,
     questions: questions.map((question, index) => {
       const item = question as Record<string, unknown>
       const kind = (typeof item.kind === "string" ? item.kind : "short") as QuestionKind

@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useEffect, useState, useTransition } from "react"
 import { startResponseAction, submitResponseAction, type ResponseState } from "@/lib/actions"
 import { emptyDraft, isAnswered, toSubmission, type AnswerDraft } from "@/lib/answers"
-import { formatMinTime, type ProductRules } from "@/lib/config"
+import { creditWord, formatCountdown, formatMinTime } from "@/lib/config"
 import { invalidReasonLabel } from "@/lib/labels"
 import type { PublicQuestion } from "@/lib/types"
 import { ClockIcon } from "@/components/icons"
@@ -14,7 +14,8 @@ export function AnswerFlow({
   surveyId,
   title,
   questions,
-  rules,
+  minCompletionSeconds,
+  reward,
   existing,
   startAt = 0,
   initialDrafts = {},
@@ -22,7 +23,8 @@ export function AnswerFlow({
   surveyId: string
   title: string
   questions: PublicQuestion[]
-  rules: ProductRules
+  minCompletionSeconds: number
+  reward: number
   existing: ResponseState | null
   startAt?: number
   initialDrafts?: Record<string, AnswerDraft>
@@ -92,8 +94,9 @@ export function AnswerFlow({
   }
 
   const draft = drafts[question.id] ?? emptyDraft()
-  const elapsed = now === null ? 0 : Math.max(0, Math.floor((now - new Date(phase.startedAt).getTime()) / 1000))
-  const timeMet = elapsed >= rules.minCompletionSeconds
+  const elapsed =
+    now === null || !phase.startedAt ? 0 : Math.max(0, Math.floor((now - new Date(phase.startedAt).getTime()) / 1000))
+  const remaining = Math.max(0, minCompletionSeconds - elapsed)
   const progress = ((index + 1) / questions.length) * 100
 
   function setDraft(next: AnswerDraft) {
@@ -129,12 +132,22 @@ export function AnswerFlow({
           Question {index + 1} of {questions.length}
         </p>
       </div>
-      <p className="mt-4 flex items-center gap-2 text-sm text-muted">
-        <ClockIcon className="h-4 w-4" />
-        {timeMet
-          ? `Minimum time met. Credits are awarded only if the response is valid.`
-          : `Stay at least ${formatMinTime(rules.minCompletionSeconds)} to earn credits`}
-      </p>
+      <div
+        className={`mt-4 rounded-2xl px-4 py-3 ${remaining > 0 ? "bg-amber-soft" : "bg-ok-soft"}`}
+        role="timer"
+        aria-label={remaining > 0 ? `${formatCountdown(remaining)} remaining before the minimum time` : "Minimum time met"}
+      >
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
+          <ClockIcon className="h-4 w-4" />
+          {remaining > 0 ? "Time left before the minimum" : "Minimum time met"}
+        </p>
+        <p className="mt-1 font-mono text-3xl font-semibold tabular-nums text-ink">{formatCountdown(remaining)}</p>
+        <p className="mt-1 text-sm text-muted">
+          {remaining > 0
+            ? `Wait ${formatCountdown(remaining)} more. You can still submit early. That response is saved, uses a response slot, and earns 0 credits.`
+            : `You have waited at least ${formatMinTime(minCompletionSeconds)}. A valid response earns ${reward} ${creditWord(reward)}.`}
+        </p>
+      </div>
       <h2 className="mt-6 text-lg font-semibold">{question.prompt}</h2>
       <div className="mt-4">
         <QuestionField question={question} draft={draft} onChange={setDraft} />
@@ -164,7 +177,7 @@ export function AnswerFlow({
         )}
       </div>
       <p className="mt-6 text-center text-sm text-muted">
-        Complete this survey validly to earn {rules.rewardPerValidCompletion} credits
+        A valid response earns {reward} {creditWord(reward)}. Submit stays available if you finish early.
       </p>
     </article>
   )

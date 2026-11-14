@@ -23,6 +23,7 @@ async function CreateContent() {
       <h1 className="mb-6 text-4xl font-semibold tracking-tight">Create a survey</h1>
       <CreateForm
         rules={rules}
+        balance={user.creditBalance}
         initial={
           example
             ? {
@@ -30,9 +31,8 @@ async function CreateContent() {
                 description: example.description,
                 tags: example.tags,
                 questions: example.questions,
-                responseCap: rules.defaultResponseCap,
               }
-            : { title: "", description: "", tags: [], questions: [], responseCap: rules.defaultResponseCap }
+            : { title: "", description: "", tags: [], questions: [] }
         }
       />
     </div>

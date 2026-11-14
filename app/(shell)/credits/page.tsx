@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import { requireUser } from "@/lib/auth"
 import { getRules, listLedger } from "@/lib/data"
-import { formatMinTime } from "@/lib/config"
+import { creditWord, formatMinTime } from "@/lib/config"
 import { ledgerReasonLabel } from "@/lib/labels"
 import { DataError } from "@/components/ui"
 
@@ -24,16 +24,22 @@ async function CreditsContent() {
     <div className="space-y-6">
       <div>
         <h1 className="text-4xl font-semibold tracking-tight">Credits</h1>
-        <p className="mt-2 text-muted">Balance and the ledger behind it. Awards and spends happen in one database transaction.</p>
+        <p className="mt-2 max-w-2xl text-muted">
+          New accounts start with {rules.startingCredits} {creditWord(rules.startingCredits)}. One credit covers{" "}
+          {rules.questionsPerCredit} questions, so a response costs ceil(questions ÷ {rules.questionsPerCredit}) credits
+          and a valid completion earns that same amount. You fund a survey by allocating credits to it.
+        </p>
       </div>
       <p className="text-5xl font-semibold text-amber-deep">{user.creditBalance}</p>
       <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Info label="Valid answer" value={`+${rules.rewardPerValidCompletion}`} />
-        <Info label="Raise cap by 10" value={`${rules.raiseCapCost} credits`} />
+        <Info label="Starting balance" value={`${rules.startingCredits} credits, once`} />
+        <Info label="Credit size" value={`${rules.questionsPerCredit} questions`} />
+        <Info label="Valid answer" value="Same as one response slot" />
         <Info label="Promote" value={`${rules.promoteCost} credits / ${rules.promoteDays} days`} />
-        <Info label="Extra survey" value={`${rules.extraSurveyCost} credits`} />
-        <Info label="Free publishes left" value={String(user.freeCreatesRemaining)} />
-        <Info label="Minimum time" value={formatMinTime(rules.minCompletionSeconds)} />
+        <Info
+          label="Minimum time"
+          value={`Up to ${rules.minSecondsPerQuestion}s per question, default ${formatMinTime(rules.defaultMinCompletionSeconds)}`}
+        />
       </dl>
       <div className="overflow-x-auto rounded-3xl border border-line bg-white">
         <table className="w-full min-w-[36rem] text-left text-sm">
